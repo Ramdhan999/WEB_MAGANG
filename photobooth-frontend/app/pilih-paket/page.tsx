@@ -31,7 +31,7 @@ export default function PilihPaketPage() {
 
   return (
     <main 
-      className="relative flex min-h-screen flex-col items-center overflow-x-hidden text-white pt-16 pb-16"
+      className="relative flex min-h-screen flex-col items-center overflow-x-hidden text-white pt-16 pb-16 selection:bg-[#75FFC3] selection:text-[#2E4F4D]"
       style={{
         background: 'radial-gradient(100% 408.71% at 0% 0%, #66908E 0%, #243F42 29.63%, #35463C 67.36%, #5CAA96 100%), radial-gradient(17.98% 73.49% at 91.02% 82.12%, #66908E 0%, #496361 0%, #373737 89.92%)'
       }}
@@ -85,7 +85,7 @@ export default function PilihPaketPage() {
       </div>
 
       {/* --- 3. 4 CARDS GRID PAKET --- */}
-      <div className="flex flex-wrap justify-center gap-[15px] px-4 w-full mb-6">
+      <div className="flex flex-wrap justify-center gap-[15px] px-4 w-full mb-6 mt-8">
         {packages.map((pkg) => {
           // LOGIKA AKTIF: Kotak nyala kalau di-hover ATAU kalau lagi di-klik (selected)
           const isActive = hoveredId === pkg.id || selectedId === pkg.id;
@@ -93,7 +93,7 @@ export default function PilihPaketPage() {
           return (
             <div 
               key={pkg.id} 
-              className="relative mt-[20px]"
+              className="relative mt-[20px] group"
               onMouseEnter={() => setHoveredId(pkg.id)}
               onMouseLeave={() => setHoveredId(null)}
               onClick={() => setSelectedId(pkg.id)} // Mengunci pilihan saat diklik
@@ -102,34 +102,34 @@ export default function PilihPaketPage() {
               {/* Tag TERPOPULER */}
               {pkg.isPopular && (
                 <div 
-                  className="absolute top-[-10px] left-1/2 transform -translate-x-1/2 z-20 flex items-center justify-center"
+                  className="absolute top-[-12px] left-1/2 transform -translate-x-1/2 z-20 flex items-center justify-center shadow-md animate-pulse"
                   style={{ width: '100px', height: '23px', background: 'linear-gradient(90deg, #DABD80 84.62%, #746544 100%)', border: '1px solid #AC8947', borderRadius: '23px' }}
                 >
                   <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '12px', color: '#655B3C', letterSpacing: '-0.05em' }}>TERPOPULER!</span>
                 </div>
               )}
 
-              {/* Checkmark Centang Ijo (MUNCUL KALAU AKTIF) */}
+              {/* Checkmark Centang Ijo (MUNCUL KALAU AKTIF) dengan efek pop */}
               <div 
-                className={`absolute top-[-20px] right-[-20px] z-20 flex items-center justify-center h-[51px] w-[51px] rounded-full bg-[#75FFC3] border-[4px] border-[#2E4F4D] shadow-lg transition-all duration-300 ${isActive ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}
+                className={`absolute top-[-15px] right-[-15px] z-20 flex items-center justify-center h-[45px] w-[45px] rounded-full bg-[#75FFC3] border-[3px] border-[#2E4F4D] shadow-[0_0_15px_rgba(117,255,195,0.6)] transition-all duration-300 ease-out ${isActive ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-50 translate-y-4'}`}
               >
-                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#2E4F4D" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7"/></svg>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2E4F4D" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7"/></svg>
               </div>
 
-              {/* BOX KARTU */}
+              {/* BOX KARTU DENGAN EFEK GLOW */}
               <div 
-                className="flex flex-col items-center pt-8 pb-6 relative z-10 transition-all duration-300 ease-in-out cursor-pointer"
+                className={`flex flex-col items-center pt-8 pb-6 relative z-10 transition-all duration-500 ease-out cursor-pointer ${isActive ? 'shadow-[0_0_30px_rgba(42,232,246,0.3)]' : 'shadow-lg hover:shadow-xl'}`}
                 style={{
                   width: '240px', height: '435px',
                   // BERUBAH WARNA PAS AKTIF
                   background: isActive ? '#427C7A' : '#2E4F4D',
                   border: isActive ? '1.5px solid #2AE8F6' : '1.5px solid #54868A',
                   borderRadius: '17px', boxSizing: 'border-box',
-                  transform: isActive ? 'translateY(-8px)' : 'translateY(0)' // Kotak naik dikit
+                  transform: isActive ? 'translateY(-12px)' : 'translateY(0)' // Kotak naik dikit
                 }}
               >
                 
-                <img src={pkg.img} alt={pkg.title} style={{ width: '82px', height: '82px', objectFit: 'contain', marginBottom: '12px' }} className="transition-transform duration-300 hover:scale-110" />
+                <img src={pkg.img} alt={pkg.title} style={{ width: '82px', height: '82px', objectFit: 'contain', marginBottom: '12px' }} className="transition-transform duration-500 group-hover:scale-110" />
 
                 <div 
                   className="flex items-center justify-center mb-6 shadow-sm"
@@ -147,7 +147,7 @@ export default function PilihPaketPage() {
                     <div key={idx} className="flex flex-col">
                       <div className="flex items-center gap-2 mb-[8px] mt-[2px]">
                         <img src={`/icon${idx + 1}.png`} alt="icon" style={{ width: '19px', height: '19px' }} />
-                        <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: '12px', color: '#7EC1BA' }}>
+                        <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: '12px', color: isActive ? '#AEE6E1' : '#7EC1BA', transition: 'color 0.3s' }}>
                           {detail}
                         </span>
                       </div>
@@ -159,7 +159,7 @@ export default function PilihPaketPage() {
                 <div className="flex-grow"></div>
 
                 <h2 
-                  className="italic mb-2"
+                  className="italic mb-4"
                   style={{
                     fontFamily: "'Inria Serif', serif", fontWeight: 700, fontSize: '32px', letterSpacing: '-0.06em',
                     background: 'linear-gradient(90deg, #FFC74F 0%, #FFEEC8 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
@@ -171,7 +171,7 @@ export default function PilihPaketPage() {
 
                 {/* TOMBOL BAWAH DALAM KOTAK */}
                 <button 
-                  className="flex items-center justify-center transition-all duration-300"
+                  className="flex items-center justify-center transition-all duration-300 shadow-md"
                   style={{
                     width: '217px', height: '49px', borderRadius: '23px', boxSizing: 'border-box',
                     // BERUBAH WARNA PAS AKTIF
@@ -184,7 +184,7 @@ export default function PilihPaketPage() {
                     style={{
                       fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: '24px', letterSpacing: '-0.06em',
                       // BERUBAH WARNA TEKS PAS AKTIF
-                      color: isActive ? '#587970' : '#153C32'
+                      color: isActive ? '#153C32' : '#8BB8B1'
                     }}
                   >
                     {isActive ? "Terpilih" : "Pilih Paket"}
@@ -217,7 +217,7 @@ export default function PilihPaketPage() {
         {/* Tombol PEMBAYARAN (Link Dinamis sesuai paket yang diklik) */}
         <Link 
           href={`/pembayaran/${selectedId}`} 
-          className="flex items-center justify-center gap-2 transition-transform hover:scale-105 active:scale-95"
+          className="flex items-center justify-center gap-2 transition-transform hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(72,197,166,0.3)]"
           style={{
             width: '217px', height: '49px', background: 'linear-gradient(90deg, #48C5A6 72.6%, #35967E 100%)',
             border: '3px solid #318570', borderRadius: '23px', textDecoration: 'none'

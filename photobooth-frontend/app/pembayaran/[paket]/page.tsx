@@ -100,12 +100,11 @@ export default function PembayaranPage() {
             <p style={{ fontFamily: 'Inter, sans-serif', fontWeight: 400, fontSize: '16px', letterSpacing: '-0.05em', color: '#D1D1D1' }}>GoPay - OVO - Dana - DLL</p>
           </div>
         </div>
-        {/* Panah Kanan SVG */}
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }} className="transition-transform group-hover:translate-x-2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </Link>
 
-      {/* --- METODE PEMBAYARAN: VOUCHER --- */}
-      <Link href="/voucher" className="group flex items-center justify-between px-6 mb-12 transition-transform hover:-translate-y-1" style={{ width: '644px', height: '108px', background: '#2E4F4D', border: '1.5px solid #54868A', borderRadius: '18px', boxSizing: 'border-box' }}>
+      {/* --- METODE PEMBAYARAN: VOUCHER (SUDAH DIPERBAIKI) --- */}
+      <Link href="/kupon" className="group flex items-center justify-between px-6 mb-12 transition-transform hover:-translate-y-1" style={{ width: '644px', height: '108px', background: '#2E4F4D', border: '1.5px solid #54868A', borderRadius: '18px', boxSizing: 'border-box' }}>
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center" style={{ width: '78px', height: '76px', background: '#B3D2D1', borderRadius: '9px' }}>
             <img src="/voucher.png" alt="Voucher" style={{ width: '50px', height: '50px', objectFit: 'contain' }} />
@@ -115,13 +114,12 @@ export default function PembayaranPage() {
             <p style={{ fontFamily: 'Inter, sans-serif', fontWeight: 400, fontSize: '16px', letterSpacing: '-0.05em', color: '#D1D1D1' }}>Masukkan kode voucher.</p>
           </div>
         </div>
-        {/* Panah Kanan SVG */}
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }} className="transition-transform group-hover:translate-x-2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </Link>
 
-      {/* --- TOMBOL GANTI PAKET (KEMBALI) --- */}
+      {/* --- TOMBOL GANTI PAKET / KEMBALI (SUDAH DIPERBAIKI) --- */}
       <Link 
-        href="/pilih-paket" 
+        href="/pembayaran/pilih-paket" 
         className="flex items-center justify-center gap-3 transition-transform hover:scale-105 active:scale-95"
         style={{ width: '286px', height: '48px', background: '#224C42', border: '3px solid #318570', borderRadius: '30px', textDecoration: 'none' }}
       >
