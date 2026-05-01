@@ -5,17 +5,34 @@ import { useRouter } from "next/navigation";
 
 export default function ResultPage() {
   const router = useRouter();
+  
   const [photoSlots, setPhotoSlots] = useState<any[]>([]);
+  const [activeFilter, setActiveFilter] = useState("Original");
+  const [stickers, setStickers] = useState<any[]>([]);
 
   useEffect(() => {
-    const savedData = localStorage.getItem("arranged_slots");
-    if (savedData) {
-      setPhotoSlots(JSON.parse(savedData));
-    }
+    const savedSlots = localStorage.getItem("arranged_slots");
+    const savedFilter = localStorage.getItem("applied_filter");
+    const savedStickers = localStorage.getItem("applied_stickers");
+
+    if (savedSlots) setPhotoSlots(JSON.parse(savedSlots));
+    if (savedFilter) setActiveFilter(savedFilter);
+    if (savedStickers) setStickers(JSON.parse(savedStickers));
   }, []);
 
+  const getFilterCSS = (filterName: string) => {
+    switch (filterName) {
+      case "Noir": return "grayscale(100%) contrast(120%)";
+      case "Vintage": return "sepia(60%) contrast(90%)";
+      case "Vivid": return "saturate(180%)";
+      case "Warm": return "sepia(30%) saturate(140%)";
+      case "Cool": return "hue-rotate(30deg) saturate(120%)";
+      default: return "none";
+    }
+  };
+
   const handleNewSession = () => {
-    localStorage.removeItem("arranged_slots");
+    localStorage.clear();
     router.push("/"); 
   };
 
@@ -30,70 +47,90 @@ export default function ResultPage() {
       <div className="absolute top-0 left-0 w-full h-[12px] z-20" style={{ background: 'linear-gradient(270deg, #00FFA2 0%, #467664 99.09%)' }}></div>
 
       {/* Header Badge */}
-      <div style={{ width: '272px', height: '56px', background: '#476A53', border: '1px solid #85DDA6', borderRadius: '28px' }} className="flex items-center justify-center gap-3 mb-8 shadow-lg z-10 shrink-0">
+      <div 
+        style={{ width: '272px', height: '56px', background: '#476A53', border: '1px solid #85DDA6', borderRadius: '28px' }} 
+        className="flex items-center justify-center gap-3 mb-6 shadow-lg z-10 shrink-0"
+      >
         <div style={{ width: '31px', height: '31px', background: 'linear-gradient(180deg, #75FFC3 0%, #72F6BD 45.19%, #548A72 100%)', clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)' }}></div>
         <span className="font-inter font-bold text-[24px]" style={{ background: 'radial-gradient(50% 50% at 50% 50%, #A9E2B5 0%, #4DE8D4 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
           Hasil Foto
         </span>
       </div>
 
-      {/* Main Container */}
+      {/* Main Container - Gap diperkecil biar lebih naik */}
       <div className="flex flex-col items-center gap-6 z-10 w-full">
         
-        {/* Frame Hasil */}
-        <div style={{ width: '380px', height: '540px', background: '#2E4F4D', border: '1.5px solid #54868A', borderRadius: '23px' }} className="flex items-center justify-center p-4 shadow-2xl shrink-0">
-          <div className="w-[140px] h-[480px] bg-[#1A2E2D] rounded-[12px] p-2 flex flex-col gap-2 overflow-hidden">
-            {photoSlots.map((slot, index) => (
-              <div 
-                key={index} 
-                className="w-full flex-grow rounded-sm shadow-inner" 
-                style={{ backgroundColor: slot.photo ? slot.photo.bg : '#223736' }}
-              ></div>
-            ))}
+        {/* AREA FRAME HASIL */}
+        <div 
+          style={{ width: '380px', height: '560px', background: '#2E4F4D', border: '1.5px solid #54868A', borderRadius: '23px' }} 
+          className="relative flex items-center justify-center p-4 shadow-2xl shrink-0"
+        >
+          <div className="relative w-[180px] h-[500px] bg-[#1A2E2D] rounded-[12px] p-2 flex flex-col gap-2 overflow-hidden shadow-inner border-[3px] border-[#1A2E2D]">
+            <div className="w-full h-full flex flex-col gap-2 transition-all duration-700" style={{ filter: getFilterCSS(activeFilter) }}>
+                {photoSlots.map((slot, index) => (
+                <div 
+                    key={index} 
+                    className="w-full flex-grow rounded-sm shadow-md" 
+                    style={{ backgroundColor: slot.photo ? slot.photo.bg : '#223736' }}
+                />
+                ))}
+            </div>
+
+            {/* Layer Stiker Statis */}
+            <div className="absolute inset-0 pointer-events-none z-30">
+              {stickers.map((stk, i) => (
+                <div 
+                  key={i}
+                  style={{ 
+                    position: 'absolute',
+                    left: `${stk.x}%`, 
+                    top: `${stk.y}%`, 
+                    transform: `translate(-50%, -50%) rotate(${stk.rotation || 0}deg)`,
+                    fontSize: `${(stk.size || 50) * 0.8}px`,
+                    lineHeight: 1
+                  }}
+                >
+                  {stk.emoji}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Action Buttons (Print & Download) */}
+        {/* TOMBOL AKSI (PRINT & DOWNLOAD) */}
         <div className="flex gap-4 shrink-0">
-          {/* Tombol Print */}
-          <div style={{ width: '220px', height: '85px', background: '#2E4F4D', border: '1.5px solid #54868A', borderRadius: '20px' }} className="flex items-center gap-3 px-3 shadow-md cursor-pointer hover:bg-[#365c5a] transition-all">
-            {/* GAMBAR GEDE */}
+          <div style={{ width: '220px', height: '85px', background: '#2E4F4D', border: '1.5px solid #54868A', borderRadius: '20px' }} className="flex items-center gap-3 px-3 shadow-md cursor-pointer hover:bg-[#365c5a] transition-all group">
             <div style={{ width: '60px', height: '60px', background: '#2E706D', borderRadius: '15px' }} className="flex items-center justify-center shrink-0">
-               <img src="/print.png" alt="print" className="w-[45px] h-[45px] object-contain" />
+              <img src="/print.png" alt="print" className="w-[45px] h-[45px] object-contain group-hover:scale-110 transition-transform" />
             </div>
-            {/* TULISAN TETEP KECIL */}
             <div className="flex flex-col">
-              <span className="font-inter font-bold text-[18px] leading-tight" style={{ background: 'linear-gradient(90deg, #FFFFFF 0%, #979797 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Print</span>
+              <span className="font-inter font-bold text-[18px] leading-tight text-white">Print</span>
               <span className="font-hind font-semibold text-[11px] text-[#3E8C7B] uppercase tracking-tighter">Cetak hasil</span>
             </div>
           </div>
 
-          {/* Tombol Download */}
-          <div style={{ width: '220px', height: '85px', background: '#2E4F4D', border: '1.5px solid #54868A', borderRadius: '20px' }} className="flex items-center gap-3 px-3 shadow-md cursor-pointer hover:bg-[#365c5a] transition-all">
-            {/* GAMBAR GEDE */}
+          <div style={{ width: '220px', height: '85px', background: '#2E4F4D', border: '1.5px solid #54868A', borderRadius: '20px' }} className="flex items-center gap-3 px-3 shadow-md cursor-pointer hover:bg-[#365c5a] transition-all group">
             <div style={{ width: '60px', height: '60px', background: '#2E706D', borderRadius: '15px' }} className="flex items-center justify-center shrink-0">
-               <img src="/expor.png" alt="export" className="w-[45px] h-[45px] object-contain" />
+              <img src="/expor.png" alt="export" className="w-[45px] h-[45px] object-contain group-hover:scale-110 transition-transform" />
             </div>
-            {/* TULISAN TETEP KECIL */}
             <div className="flex flex-col">
-              <span className="font-inter font-bold text-[18px] leading-tight" style={{ background: 'linear-gradient(90deg, #FFFFFF 0%, #979797 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Download</span>
+              <span className="font-inter font-bold text-[18px] leading-tight text-white">Download</span>
               <span className="font-hind font-semibold text-[11px] text-[#3E8C7B] uppercase tracking-tighter">Simpan file</span>
             </div>
           </div>
         </div>
 
-        {/* Tombol Sesi Baru */}
+        {/* TOMBOL SESI BARU - Ditinggikan (Gap dikurangi) */}
         <button 
           onClick={handleNewSession}
-          style={{ width: '250px', height: '75px', background: '#246855', border: '3px solid #30AC89', borderRadius: '18px' }}
-          className="flex items-center justify-between px-6 hover:scale-105 transition-all shadow-xl group mt-2"
+          style={{ width: '250px', height: '70px', background: '#246855', border: '3px solid #30AC89', borderRadius: '18px' }}
+          className="flex items-center justify-between px-6 hover:scale-105 transition-all shadow-xl group active:scale-95"
         >
           <span className="font-inter font-bold text-[18px]" style={{ background: 'radial-gradient(50% 50% at 50% 50%, #A9E2B5 0%, #4DE8D4 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
             SESI BARU
           </span>
-          {/* IKON REFRESH GEDE */}
           <div className="w-[45px] h-[45px] flex items-center justify-center opacity-90 group-hover:rotate-180 transition-transform duration-500">
-             <svg width="35" height="35" viewBox="0 0 24 24" fill="none" stroke="#A9E2B5" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#A9E2B5" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           </div>
         </button>
 

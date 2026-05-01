@@ -90,7 +90,10 @@ export default function PembayaranPage() {
       <h3 className="italic font-bold text-[24px] mb-6 tracking-[-0.05em] opacity-90">Pilih Metode Pembayaran:</h3>
 
       {/* --- METODE PEMBAYARAN: QRIS --- */}
-      <Link href="/qris" className="group flex items-center justify-between px-6 mb-4 transition-transform hover:-translate-y-1" style={{ width: '644px', height: '108px', background: '#2E4F4D', border: '1.5px solid #54868A', borderRadius: '18px', boxSizing: 'border-box' }}>
+      <Link 
+        href={`/qris?paket=${paketDipilih}`} 
+        className="group flex items-center justify-between px-6 mb-4 transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_10px_20px_rgba(0,0,0,0.3)] hover:border-[#6AC5C3]" 
+        style={{ width: '644px', height: '108px', background: '#2E4F4D', border: '1.5px solid #54868A', borderRadius: '18px', boxSizing: 'border-box' }}>
         <div className="flex items-center gap-6">
           <div className="flex items-center justify-center" style={{ width: '78px', height: '76px', background: '#B3D2D1', borderRadius: '9px' }}>
             <img src="/qris.png" alt="QRIS" style={{ width: '50px', height: '50px', objectFit: 'contain' }} />
@@ -119,7 +122,7 @@ export default function PembayaranPage() {
 
       {/* --- TOMBOL GANTI PAKET / KEMBALI (SUDAH DIPERBAIKI) --- */}
       <Link 
-        href="/pembayaran/pilih-paket" 
+        href="/pilih-paket" // BALIK KE HALAMAN PILIH PAKET
         className="flex items-center justify-center gap-3 transition-transform hover:scale-105 active:scale-95"
         style={{ width: '286px', height: '48px', background: '#224C42', border: '3px solid #318570', borderRadius: '30px', textDecoration: 'none' }}
       >

@@ -268,11 +268,12 @@ export default function FrameSelectionPage() {
           onClick={() => router.back()}
           className="w-[280px] md:w-[317px] h-[70px] md:h-[74px] bg-[#224C42] border-[3px] border-[#318570] rounded-[23px] flex items-center justify-center gap-3 hover:bg-[#1C3D35] transition-colors shadow-md box-border"
         >
-          <div className="relative w-[24px] h-[16px] flex items-center justify-center">
-             <div className="absolute w-full h-[2.5px] bg-[#122A24] rounded-full"></div>
-             <div className="absolute left-0 w-[10px] h-[2.5px] bg-[#122A24] rotate-45 origin-left rounded-full"></div>
-             <div className="absolute left-0 w-[10px] h-[2.5px] bg-[#122A24] -rotate-45 origin-left rounded-full"></div>
+          <div className="shrink-0 flex items-center justify-center">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#122A24" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
           </div>
+          
           <span className="font-inter font-bold italic text-[24px] tracking-[-0.06em] text-[#122A24]">
             Kembali
           </span>
@@ -287,16 +288,9 @@ export default function FrameSelectionPage() {
             Atur foto pada template!
           </span>
           <div className="w-[30px] h-[30px] flex items-center justify-center shrink-0 ml-1">
-            {imgErrors['arrowNext'] ? (
-               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1D4F42" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            ) : (
-              <img 
-                src="/image.png" 
-                alt="arrow right" 
-                className="w-full h-full object-contain opacity-70 rotate-180" 
-                onError={() => handleImageError('arrowNext')} 
-              />
-            )}
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1D4F42" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" className="rotate-180">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
           </div>
         </Link>
       </div>

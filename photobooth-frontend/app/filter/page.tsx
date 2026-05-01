@@ -43,12 +43,19 @@ export default function FilterStickerPage() {
   const stickers = ["😊", "😎", "❤️", "⭐", "🔥", "✨", "🎉", "🍀"];
 
   const addSticker = (emoji: string) => {
-    const newSticker = { id: Date.now(), x: 40, y: 40, size: 80, rotation: 0, emoji };
+    const newSticker = { id: Date.now(), x: 50, y: 50, size: 60, rotation: 0, emoji };
     setPlacedStickers([...placedStickers, newSticker]);
   };
 
   const removeSticker = (id: number) => {
     setPlacedStickers(placedStickers.filter(s => s.id !== id));
+  };
+
+  // Logic Simpan Data sebelum pindah halaman
+  const handleLihatHasil = () => {
+    localStorage.setItem("applied_filter", selectedFilter);
+    localStorage.setItem("applied_stickers", JSON.stringify(placedStickers));
+    router.push("/result");
   };
 
   const getFilterCSS = () => {
@@ -57,6 +64,7 @@ export default function FilterStickerPage() {
       case "Vintage": return "sepia(60%) contrast(90%)";
       case "Vivid": return "saturate(180%)";
       case "Warm": return "sepia(30%) saturate(140%)";
+      case "Cool": return "hue-rotate(30deg) saturate(120%)";
       default: return "none";
     }
   };
@@ -79,13 +87,14 @@ export default function FilterStickerPage() {
       const dx = ((e.clientX - info.startX) / frameRect.width) * 100;
       const dy = ((e.clientY - info.startY) / frameRect.height) * 100;
       setPlacedStickers(prev => prev.map(s => s.id === info.id ? {
-        ...s, x: Math.max(0, Math.min(90, info.startLeft + dx)),
-        y: Math.max(0, Math.min(95, info.startTop + dy))
+        ...s, 
+        x: info.startLeft + dx,
+        y: info.startTop + dy
       } : s));
     } else if (info.type === "resize") {
       const dx = e.clientX - info.startX;
       const dy = e.clientY - info.startY;
-      const newSize = Math.max(40, Math.min(200, info.startSize + Math.max(dx, dy)));
+      const newSize = Math.max(30, Math.min(150, info.startSize + Math.max(dx, dy)));
       setPlacedStickers(prev => prev.map(s => s.id === info.id ? { ...s, size: newSize } : s));
     } else if (info.type === "rotate") {
       const stickerEl = document.getElementById(`sticker-${info.id}`);
@@ -115,8 +124,8 @@ export default function FilterStickerPage() {
       
       {/* Progress Bar */}
       <div className="absolute top-0 left-0 w-full h-[12px] z-20 flex">
-        <div className="h-full w-[1622px]" style={{ background: 'linear-gradient(270deg, #00FFA2 0%, #467664 99.09%)' }}></div>
-        <div className="h-full flex-grow" style={{ background: 'linear-gradient(90deg, #151515 0%, #252525 100%)', transform: 'scaleX(-1)' }}></div>
+        <div className="h-full w-[95%]" style={{ background: 'linear-gradient(270deg, #00FFA2 0%, #467664 99.09%)' }}></div>
+        <div className="h-full flex-grow bg-[#151515]"></div>
       </div>
 
       {/* HEADER */}
@@ -125,15 +134,14 @@ export default function FilterStickerPage() {
           <div style={{ width: '31px', height: '31px', background: 'linear-gradient(180deg, #75FFC3 0%, #72F6BD 100%)', clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)' }}></div>
           <span className="font-inter font-bold text-[24px]" style={{ background: 'radial-gradient(50% 50% at 50% 50%, #A9E2B5 0%, #4DE8D4 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Filter & Stiker</span>
         </div>
-        <h1 style={{ width: '607px', height: '64px', fontFamily: 'Inter', fontWeight: 700, fontSize: '48px', textAlign: 'center', background: 'linear-gradient(90deg, #FFFFFF 0%, #979797 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Filter & Stiker</h1>
 
         {/* Tab Switcher */}
         <div className="flex gap-6 mt-4 mb-6">
-          <button onClick={() => setActiveTab("filter")} className={`flex items-center justify-center gap-3 w-[180px] h-[54px] rounded-[23px] border-[1.5px] ${activeTab === "filter" ? "bg-[#33817D] border-[#90C8CC] shadow-[0_0_15px_#33817D]" : "bg-[#224442] border-[#54868A]"}`}>
+          <button onClick={() => setActiveTab("filter")} className={`flex items-center justify-center gap-3 w-[180px] h-[54px] rounded-[23px] border-[1.5px] transition-all ${activeTab === "filter" ? "bg-[#33817D] border-[#90C8CC] shadow-[0_0_15px_#33817D]" : "bg-[#224442] border-[#54868A]"}`}>
             <span className="text-xl">🎨</span>
             <span className={`font-hind font-semibold text-[20px] ${activeTab === "filter" ? "text-[#2BD7B2]" : "text-[#3E8C7B]"}`}>FILTER</span>
           </button>
-          <button onClick={() => setActiveTab("sticker")} className={`flex items-center justify-center gap-3 w-[180px] h-[54px] rounded-[23px] border-[1.5px] ${activeTab === "sticker" ? "bg-[#33817D] border-[#90C8CC] shadow-[0_0_15px_#33817D]" : "bg-[#224442] border-[#54868A]"}`}>
+          <button onClick={() => setActiveTab("sticker")} className={`flex items-center justify-center gap-3 w-[180px] h-[54px] rounded-[23px] border-[1.5px] transition-all ${activeTab === "sticker" ? "bg-[#33817D] border-[#90C8CC] shadow-[0_0_15px_#33817D]" : "bg-[#224442] border-[#54868A]"}`}>
             <span className="text-xl">✨</span>
             <span className={`font-hind font-semibold text-[20px] ${activeTab === "sticker" ? "text-[#2BD7B2]" : "text-[#3E8C7B]"}`}>STIKER</span>
           </button>
@@ -143,72 +151,79 @@ export default function FilterStickerPage() {
       {/* WORKSPACE AREA */}
       <div className="relative w-full flex items-center justify-center gap-12 mt-2 z-10 px-10">
         
-        {/* Tombol Kembali (Murni CSS Panah) */}
-        <button 
-          onClick={() => router.back()} 
-          style={{ width: '317px', height: '74px', background: '#224C42', border: '3px solid #318570', borderRadius: '23px' }} 
-          className="flex items-center justify-center gap-4 hover:bg-[#1C3D35] transition-colors shadow-md"
-        >
-          <div className="relative w-[24px] h-[16px] flex items-center justify-center">
-             <div className="absolute w-full h-[2.5px] bg-[#122A24] rounded-full"></div>
-             <div className="absolute left-0 w-[10px] h-[2.5px] bg-[#122A24] rotate-45 origin-left rounded-full"></div>
-             <div className="absolute left-0 w-[10px] h-[2.5px] bg-[#122A24] -rotate-45 origin-left rounded-full"></div>
-          </div>
-          <span className="font-inter font-bold italic text-[24px] tracking-[-0.06em] text-[#122A24]">Kembali</span>
+        {/* Tombol Kembali */}
+        <button onClick={() => router.back()} style={{ width: '280px', height: '70px', background: '#224C42', border: '3px solid #318570', borderRadius: '23px' }} className="flex items-center justify-center gap-4 hover:brightness-110 active:scale-95 transition-all">
+           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#122A24" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H9M12 17l-5-5 5-5" /></svg>
+           <span className="font-inter font-bold italic text-[24px] text-[#122A24]">Kembali</span>
         </button>
 
         {/* AREA FRAME PREVIEW */}
-        <div ref={frameRef} style={{ width: '659px', height: '428px', background: '#2E4F4D', border: '1.5px solid #54868A', borderRadius: '23px' }} className="flex items-center justify-center p-6 relative shadow-2xl overflow-hidden">
-          <div className="w-[140px] h-full bg-[#1A2E2D] rounded-lg p-2 flex flex-col gap-2 transition-all shadow-2xl" style={{ filter: getFilterCSS() }}>
-            {photoSlots.map(slot => (
-              <div key={slot.id} className="flex-grow rounded-sm shadow-inner" style={{ backgroundColor: slot.photo ? slot.photo.bg : '#223736' }}></div>
+        {/* div ini sekarang punya overflow-hidden */}
+        <div 
+          ref={frameRef} 
+          style={{ width: '220px', height: '580px', background: '#1A2E2D', border: '4px solid #1A2E2D', borderRadius: '12px' }} 
+          className="relative flex flex-col gap-2 p-2 shadow-2xl overflow-hidden transition-all"
+        >
+          {/* Layer Foto dengan Filter */}
+          <div className="w-full h-full flex flex-col gap-2 transition-all" style={{ filter: getFilterCSS() }}>
+            {photoSlots.map((slot, i) => (
+              <div key={i} className="flex-grow rounded-sm shadow-inner" style={{ backgroundColor: slot.photo ? slot.photo.bg : '#223736' }}></div>
             ))}
           </div>
 
-          {/* Layer Stiker */}
+          {/* Layer Stiker di DALAM container overflow-hidden */}
           <div className="absolute inset-0 pointer-events-none">
             {placedStickers.map(s => (
-              <div key={s.id} id={`sticker-${s.id}`} className="absolute pointer-events-auto select-none group" style={{ left: `${s.x}%`, top: `${s.y}%`, width: `${s.size}px`, height: `${s.size}px`, transform: `translate(-50%, -50%) rotate(${s.rotation}deg)`, zIndex: 100 }}>
+              <div 
+                key={s.id} 
+                id={`sticker-${s.id}`} 
+                className="absolute pointer-events-auto select-none group" 
+                style={{ 
+                  left: `${s.x}%`, 
+                  top: `${s.y}%`, 
+                  width: `${s.size}px`, 
+                  height: `${s.size}px`, 
+                  transform: `translate(-50%, -50%) rotate(${s.rotation}deg)`, 
+                  zIndex: 100 
+                }}
+              >
                 <div className="w-full h-full border-2 border-transparent group-hover:border-[#00FFA2] flex items-center justify-center cursor-grab active:cursor-grabbing" onMouseDown={(e) => onStartAction(e, s, "move")}>
                   <span style={{ fontSize: `${s.size * 0.8}px` }}>{s.emoji}</span>
                 </div>
-                <div className="absolute top-[-30px] left-1/2 -translate-x-1/2 w-6 h-6 bg-[#00FFA2] rounded-full border-2 border-white cursor-alias opacity-0 group-hover:opacity-100 flex items-center justify-center shadow-lg" onMouseDown={(e) => onStartAction(e, s, "rotate")}>
-                  <div className="w-[2px] h-[15px] bg-[#00FFA2] absolute top-[20px]"></div>
+                {/* Controls */}
+                <div className="absolute top-[-25px] left-1/2 -translate-x-1/2 w-5 h-5 bg-[#00FFA2] rounded-full cursor-alias opacity-0 group-hover:opacity-100 flex items-center justify-center shadow-md" onMouseDown={(e) => onStartAction(e, s, "rotate")}>
+                  <span className="text-[10px] text-black">⟳</span>
                 </div>
-                <div className="absolute bottom-[-5px] right-[-5px] w-4 h-4 bg-[#00FFA2] border-2 border-white rounded-sm cursor-nwse-resize opacity-0 group-hover:opacity-100 shadow-lg" onMouseDown={(e) => onStartAction(e, s, "resize")} />
-                <button onClick={(e) => {e.stopPropagation(); removeSticker(s.id)}} className="absolute top-[-15px] left-[-15px] w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-[12px] opacity-0 group-hover:opacity-100 shadow-lg transition-all">✕</button>
+                <div className="absolute bottom-[-5px] right-[-5px] w-4 h-4 bg-[#00FFA2] rounded-sm cursor-nwse-resize opacity-0 group-hover:opacity-100 shadow-md" onMouseDown={(e) => onStartAction(e, s, "resize")} />
+                <button onClick={(e) => {e.stopPropagation(); removeSticker(s.id)}} className="absolute top-[-15px] left-[-15px] w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 shadow-md">✕</button>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Tombol Lihat Hasil (SVG Ikon) */}
-        <Link 
-          href="/result" 
-          style={{ width: '317px', height: '74px', background: 'linear-gradient(90deg, #48C5A6 72.6%, #35967E 100%)', border: '3px solid #318570', borderRadius: '23px' }} 
-          className="flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(72,197,166,0.3)] hover:scale-105 active:scale-95 transition-all"
+        {/* Tombol Lihat Hasil */}
+        <button 
+          onClick={handleLihatHasil}
+          style={{ width: '280px', height: '70px', background: 'linear-gradient(90deg, #48C5A6 72.6%, #35967E 100%)', border: '3px solid #318570', borderRadius: '23px' }} 
+          className="flex items-center justify-center gap-3 shadow-xl hover:scale-105 active:scale-95 transition-all"
         >
-          <span className="font-inter font-bold italic text-[24px] tracking-[-0.06em] text-[#1D4F42]">Lihat Hasil</span>
-          <div className="relative w-[28px] h-[18px] flex items-center justify-center rotate-180">
-             <div className="absolute w-full h-[2.5px] bg-[#1D4F42] rounded-full"></div>
-             <div className="absolute left-0 w-[10px] h-[2.5px] bg-[#1D4F42] rotate-45 origin-left rounded-full"></div>
-             <div className="absolute left-0 w-[10px] h-[2.5px] bg-[#1D4F42] -rotate-45 origin-left rounded-full"></div>
-          </div>
-        </Link>
+          <span className="font-inter font-bold italic text-[24px] text-[#1D4F42]">Lihat Hasil</span>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1D4F42" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l5 7-5 7" /></svg>
+        </button>
       </div>
 
       {/* Menu Bawah */}
       <div className="mt-12 z-10 w-full max-w-[1100px] flex flex-col items-center">
         {activeTab === "filter" ? (
-          <div className="flex flex-wrap justify-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex flex-wrap justify-center gap-3 animate-in fade-in slide-in-from-bottom-4">
             {filters.map(f => (
-              <button key={f} onClick={() => setSelectedFilter(f)} style={{ width: '138px', height: '50px', background: selectedFilter === f ? '#33817D' : '#224442', border: '1.5px solid #54868A', borderRadius: '23px' }} className="font-hind font-semibold text-[18px] text-white/90">{f}</button>
+              <button key={f} onClick={() => setSelectedFilter(f)} style={{ width: '130px', height: '45px', background: selectedFilter === f ? '#33817D' : '#224442', border: '1.5px solid #54868A', borderRadius: '23px' }} className="font-hind font-semibold text-[16px] text-white/90">{f}</button>
             ))}
           </div>
         ) : (
-          <div className="flex gap-6 p-6 bg-[#233534] rounded-[23px] border border-[#54868A] shadow-inner animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex gap-6 p-4 bg-[#233534] rounded-[23px] border border-[#54868A] shadow-inner animate-in fade-in slide-in-from-bottom-4">
             {stickers.map((s, i) => (
-              <button key={i} onClick={() => addSticker(s)} className="text-5xl hover:scale-110 transition-transform">{s}</button>
+              <button key={i} onClick={() => addSticker(s)} className="text-4xl hover:scale-110 active:scale-90 transition-transform">{s}</button>
             ))}
           </div>
         )}
