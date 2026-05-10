@@ -1,62 +1,52 @@
+"use client";
+
 import Link from "next/link";
 
 export default function Home() {
   return (
     <main 
-      className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden text-white"
-      style={{
-        background: 'radial-gradient(100% 408.71% at 0% 0%, #66908E 0%, #243F42 29.63%, #35463C 67.36%, #5CAA96 100%), radial-gradient(17.98% 73.49% at 91.02% 82.12%, #66908E 0%, #496361 0%, #373737 89.92%)'
-      }}
+      className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden text-white bg-[#737373]"
     >
       
-      {/* --- LAPISAN FOTO KELUARGA (UPGRADED VISIBILITY) --- */}
-      <div className="absolute inset-0 z-0">
+      <div className="absolute top-0 left-0 w-full h-[75vh] md:h-[65vh] z-0 overflow-hidden pointer-events-none">
         <img 
           src="/bg-keluarga.png" 
           alt="Family Portrait" 
+          className="w-full h-full object-cover object-top"
           style={{ 
-            width: '100%', 
-            height: '100%', 
-            objectFit: 'cover', 
-            opacity: 0.85, // Makin terang biar keliatan jelas
-            filter: 'contrast(1.1) brightness(0.9)' // Nambah kontras dikit biar tajam
+            opacity: 1,
+            filter: 'contrast(1.1) brightness(1)' 
           }} 
         />
-        {/* Overlay ditipisin biar fotonya nggak mendem warna gelap */}
         <div 
           className="absolute inset-0"
           style={{
-            background: 'linear-gradient(180deg, rgba(36, 63, 66, 0.1) 0%, rgba(36, 63, 66, 0.7) 100%)'
+            background: 'linear-gradient(180deg, rgba(217, 217, 217, 0.2) 0%, rgba(115, 115, 115, 0) 100%)'
           }}
         />
+        <div className="absolute bottom-0 left-0 w-full h-32 md:h-48 bg-gradient-to-t from-[#737373] to-transparent"></div>
       </div>
 
-      {/* --- KONTEN UTAMA (SHIFTED UPWARDS) --- */}
-      {/* Pake -mt-20 buat narik semua konten ke atas */}
-      <div className="relative z-10 flex w-full flex-col items-center justify-center px-4 -mt-20">
+      {/*KONTEN UTAMA */}
+      <div className="relative z-10 flex flex-col items-center justify-center w-full min-h-screen px-4 py-12 gap-8 md:gap-10">
         
-        {/* 1. BADGE PREMIUM (DITARIK KE ATAS) */}
+        {/* 1. BADGE PREMIUM */}
         <div 
-          className="mb-12 flex items-center justify-center gap-2"
+          className="flex items-center justify-center gap-2 shadow-sm w-[280px] md:w-[342px] h-[32px] md:h-[37px] rounded-full"
           style={{
-            width: '342px',
-            height: '37px',
             background: '#476A53',
             border: '1px solid #85DDA6',
-            borderRadius: '18.5px',
             boxSizing: 'border-box'
           }}
         >
-          <div style={{ width: '18px', height: '18px', background: 'linear-gradient(180deg, #75FFC3 0%, #72F6BD 45.19%, #548A72 100%)', clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)' }} />
+          <div className="w-[14px] h-[14px] md:w-[18px] md:h-[18px]" style={{ background: 'linear-gradient(180deg, #75FFC3 0%, #72F6BD 45.19%, #548A72 100%)', clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)' }} />
+          
           <span 
+            className="text-[13px] md:text-[16px] font-bold bg-clip-text text-transparent"
             style={{
-              fontFamily: 'Inter, sans-serif',
-              fontWeight: 700,
-              fontSize: '16px',
+              fontFamily: 'Inter, sans-serif', 
               lineHeight: '19px',
-              background: 'radial-gradient(50% 50% at 50% 50%, #A9E2B5 0%, #4DE8D4 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent'
+              backgroundImage: 'radial-gradient(50% 50% at 50% 50%, #A9E2B5 0%, #4DE8D4 100%)'
             }}
           >
             Premium Glambot Photo Studio
@@ -64,65 +54,64 @@ export default function Home() {
         </div>
 
         {/* 2. LOGO & TEKS GLAMBOT STUDIO */}
-        <div className="mb-10 flex items-center justify-center gap-[15px]">
+        <div className="flex items-center justify-center gap-3 md:gap-[15px]">
           <div 
-            className="flex items-center justify-center shadow-lg"
+            className="flex items-center justify-center shadow-lg w-[60px] h-[60px] md:w-[77px] md:h-[77px] rounded-lg"
             style={{
-              width: '77px',
-              height: '77px',
               background: 'linear-gradient(180deg, #48CF8D 0%, #245F69 100%)',
-              border: '1px solid #ACFFC1',
-              borderRadius: '9px',
-              boxSizing: 'border-box'
+              border: '1px solid #ACFFC1', boxSizing: 'border-box'
             }}
           >
-             <img src="/image2.png" alt="Camera Icon" style={{ width: '41px', height: '41px' }} />
+             <img src="/image2.png" alt="Camera Icon" className="w-[30px] h-[30px] md:w-[41px] md:h-[41px] object-contain" />
           </div>
+          
           <h2 
-            className="italic drop-shadow-md"
-            style={{
-              fontFamily: 'Inter, sans-serif',
-              fontWeight: 900,
-              fontSize: '48px',
-              lineHeight: '58px',
-              background: 'linear-gradient(90deg, #FFFFFF 0%, #999999 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              margin: 0
-            }}
+            className="text-[36px] md:text-[48px] m-0"
+            style={{ fontFamily: 'Inter, sans-serif', lineHeight: '58px' }}
           >
-            GLAMBOT<span style={{ fontWeight: 300 }}>STUDIO</span>
+            <span 
+              className="not-italic bg-clip-text text-transparent" 
+              style={{ 
+                fontWeight: 900,
+                backgroundImage: 'linear-gradient(90deg, #FFFFFF 0%, #999999 200%)'
+              }}
+            >
+              GLAMBOT
+            </span>
+            <span 
+              className="italic bg-clip-text text-transparent" 
+              style={{ 
+                fontWeight: 300,
+                backgroundImage: 'linear-gradient(273.8deg, #74BECD 23.66%, #96E4A9 63.36%)'
+              }}
+            >
+              STUDIO
+            </span>
           </h2>
         </div>
 
         {/* 3. MAIN TITLE */}
-        <div className="mb-6 flex flex-col items-center">
+        <div className="flex flex-col items-center">
           <h1 
-            className="italic drop-shadow-xl"
+            className="text-center italic text-[48px] md:text-[96px] m-0 bg-clip-text text-transparent"
             style={{
-              fontFamily: 'Inter, sans-serif',
-              fontWeight: 200,
-              fontSize: '96px',
-              color: '#FFFFFF',
-              lineHeight: '90px', 
-              letterSpacing: '-0.04em',
-              margin: 0
+              fontFamily: 'Inter, sans-serif', 
+              fontWeight: 800, 
+              backgroundImage: 'linear-gradient(90deg, #999999 0%, #FFFFFF 100%)', 
+              lineHeight: '1.1', 
+              letterSpacing: '-0.04em'
             }}
           >
             Abadikan Momen
           </h1>
           <h1 
-            className="italic drop-shadow-xl"
+            className="text-center not-italic text-[48px] md:text-[96px] m-0 bg-clip-text text-transparent"
             style={{
-              fontFamily: 'Inter, sans-serif',
-              fontWeight: 700,
-              fontSize: '110px',
-              background: 'linear-gradient(273.8deg, #74BECD 23.66%, #96E4A9 63.36%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              lineHeight: '110px',
-              letterSpacing: '-0.04em',
-              margin: 0
+              fontFamily: 'Inter, sans-serif', 
+              fontWeight: 800, 
+              backgroundImage: 'linear-gradient(273.8deg, #74BECD 23.66%, #96E4A9 63.36%)', // Warna sesuai CSS lu
+              lineHeight: '1.1', 
+              letterSpacing: '-0.04em'
             }}
           >
             Terbaik Kamu
@@ -131,31 +120,27 @@ export default function Home() {
 
         {/* 4. SUBTITLE */}
         <p 
-          className="mb-10"
+          className="text-center text-[16px] md:text-[20px] max-w-[90%] md:max-w-[600px] mt-[-10px] md:mt-[-20px]"
           style={{
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 300,
-            fontSize: '20px',
-            color: '#A2E3CA',
-            textAlign: 'center',
-            lineHeight: '1.4',
-            maxWidth: '600px',
-            textShadow: '0 2px 4px rgba(0,0,0,0.3)'
+            fontFamily: 'Inter, sans-serif', fontWeight: 400,
+            color: '#A2E3CA', lineHeight: '1.4'
           }}
         >
           Robot arm kamera otomatis dengan filter premium & cetak instan<br/>
           Pengalaman foto mandiri yang tak terlupakan.
         </p>
 
-        {/* --- 5. TOMBOL TOUCH BAWAH --- */}
-        <Link href="/tutorial" className="group relative flex h-[184px] w-[184px] items-center justify-center cursor-pointer">
-          <div className="absolute transition-transform duration-500 group-hover:scale-110" style={{ width: '184px', height: '184px', borderRadius: '50%', background: 'radial-gradient(75% 75% at 50% 50%, #48C5A6 25%, rgba(35, 95, 80, 0) 48.08%)' }}></div>
-          <div className="absolute transition-transform duration-700 group-hover:rotate-180" style={{ width: '158px', height: '158px', borderRadius: '50%', border: '1px dashed #27B18A', boxSizing: 'border-box' }}></div>
-          <div className="absolute" style={{ width: '137px', height: '137px', borderRadius: '50%', border: '1px solid #27B18A', boxSizing: 'border-box' }}></div>
-          <div className="absolute flex items-center justify-center transition-transform duration-300 group-hover:scale-105" style={{ width: '106px', height: '106px', borderRadius: '50%', background: '#48C5A6' }}>
-             <img src="/image1.png" alt="Touch" style={{ width: '60px', height: '60px', objectFit: 'contain' }} className="transition-transform duration-300 group-hover:scale-110" />
-          </div>
-        </Link>
+        {/* 5. TOMBOL TOUCH BAWAH */}
+        <div className="flex flex-col items-center justify-center mt-6 md:mt-10">
+          <Link href="/tutorial" className="group relative flex items-center justify-center cursor-pointer w-[140px] h-[140px] md:w-[184px] md:h-[184px]">
+            <div className="absolute transition-all duration-500 opacity-0 group-hover:opacity-100 group-hover:scale-110 w-full h-full rounded-full" style={{ background: 'radial-gradient(75% 75% at 50% 50%, rgba(72, 197, 166, 0.4) 0%, rgba(35, 95, 80, 0) 100%)' }}></div>
+            <div className="absolute transition-transform duration-700 group-hover:rotate-180 w-[85%] h-[85%] rounded-full border-[1.5px] border-dashed border-[#27B18A] box-border"></div>
+            <div className="absolute w-[75%] h-[75%] rounded-full border-[1.5px] border-solid border-[#27B18A] box-border"></div>
+            <div className="absolute flex items-center justify-center transition-transform duration-300 group-hover:scale-105 shadow-lg w-[58%] h-[58%] rounded-full bg-[#48C5A6]">
+               <img src="/image1.png" alt="Touch" className="w-[45%] h-[45%] object-contain transition-transform duration-300 group-hover:scale-110" />
+            </div>
+          </Link>
+        </div>
 
       </div>
     </main>

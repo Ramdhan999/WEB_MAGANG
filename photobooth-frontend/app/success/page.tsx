@@ -24,100 +24,127 @@ export default function SuccessPage() {
 
   return (
     <main 
-      className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden text-white"
-      style={{
-        background: 'radial-gradient(100% 408.71% at 0% 0%, #66908E 0%, #243F42 29.63%, #35463C 67.36%, #5CAA96 100%), radial-gradient(17.98% 73.49% at 91.02% 82.12%, #66908E 0%, #496361 0%, #373737 89.92%)'
-      }}
+      className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 md:px-0"
+      style={{ backgroundColor: '#E3D5D5' }} 
     >
-      {/* --- PROGRESS BAR  */}
-      <div className="absolute top-0 left-0 w-full h-[12px] z-20">
-        <div className="absolute top-0 left-0 w-full h-full" style={{ background: 'linear-gradient(90deg, #151515 0%, #252525 100%)' }}></div>
-        <div 
-          className="absolute top-0 left-0 h-full transition-all duration-1000 ease-out" 
-          style={{ width: '42%', background: 'linear-gradient(270deg, #00FFA2 0%, #467664 99.09%)' }}
-        ></div>
+      {/* PROGRESS BAR */}
+      <div className="absolute top-0 left-0 w-full h-[12px] z-20 flex">
+        <div className="h-full w-[45%]" style={{ backgroundImage: 'linear-gradient(270deg, #00FFA2 0%, #467664 99.09%)' }}></div>
+        <div className="h-full flex-grow bg-[#151515]"></div>
       </div>
 
-      {/* --- 1. BADGE VERIFIKASI --- */}
+      {/* 1. BADGE VERIFIKASI */}
       <div 
-        className="absolute top-16 flex items-center justify-center gap-3 shadow-lg animate-fade-in-down" 
-        style={{ width: '224px', height: '56px', background: '#476A53', border: '1px solid #85DDA6', borderRadius: '28px' }}
+        className="absolute top-12 md:top-16 flex items-center justify-center gap-3 shadow-md animate-fade-in-down z-10 rounded-full" 
+        style={{ width: '224px', height: '56px', backgroundColor: '#476A53', border: '1px solid #85DDA6' }}
       >
-        <div style={{ width: '24px', height: '24px', background: 'linear-gradient(180deg, #75FFC3 0%, #72F6BD 45.19%, #548A72 100%)', clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)' }} />
-        <span className="font-inter font-bold text-[24px]" style={{ background: 'radial-gradient(50% 50% at 50% 50%, #A9E2B5 0%, #4DE8D4 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+        <div style={{ width: '24px', height: '24px', backgroundImage: 'linear-gradient(180deg, #75FFC3 0%, #72F6BD 45.19%, #548A72 100%)', clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)' }} />
+        <span className="font-inter font-bold text-[20px] md:text-[24px]" style={{ backgroundImage: 'radial-gradient(50% 50% at 50% 50%, #A9E2B5 0%, #4DE8D4 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
           Verifikasi
         </span>
       </div>
 
-      {/* --- 2. KONTEN TENGAH (CLEAN DESIGN) --- */}
-      <div className="relative flex flex-col items-center justify-center z-10">
+      {/* 2. KONTEN TENGAH */}
+      <div className="relative flex flex-col items-center justify-center z-30 mt-16">
         
-        {/* Glow Aura di belakang (Efek sinar ijo lembut) */}
-        <div 
-          className={`absolute w-[250px] h-[250px] rounded-full transition-all duration-1000 blur-[80px] ${status === "success" ? "bg-[#00FFB7] opacity-30" : "bg-[#4DE8D4] opacity-10"}`}
-        />
-
-        {/* ICON AREA */}
-        <div className="relative flex items-center justify-center mb-12 w-[180px] h-[180px]">
-          {status === "verifying" ? (
-            <div className="relative w-full h-full">
-              <div className="absolute inset-0 rounded-full border-[10px] border-[#0C201B]" />
-              <div className="absolute inset-0 rounded-full animate-spin-custom border-[10px] border-transparent border-t-[#00FFB7]" />
-            </div>
-          ) : (
+        {/* AREA ANIMASI ROKET & API */}
+        <div className="relative flex items-center justify-center mb-8 w-[150px] h-[200px] md:w-[200px] md:h-[250px]">
+          <div className={`relative flex flex-col items-center ${status === "verifying" ? "animate-rumble" : "animate-launch"}`}>
+            <img 
+              src="/roket.png" 
+              alt="Rocket" 
+              className="relative z-30 object-contain w-[120px] h-[120px] md:w-[160px] md:h-[160px]"
+              onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.parentElement!.innerHTML = '<span class="text-6xl">🚀</span>'; }}
+            />
             <div 
-              className="absolute inset-0 flex items-center justify-center rounded-full bg-[#00FFB7] animate-pop-in shadow-[0_0_50px_rgba(0,255,183,0.5)]"
-              style={{ border: '6px solid #0C201B' }}
+              className="absolute top-[85%] md:top-[88%] flex flex-col items-center justify-start z-20"
+              style={{ 
+                transformOrigin: 'top center',
+                transform: status === "success" ? "scaleY(1.5) translateY(5px)" : "scaleY(1) translateY(0px)",
+                transition: "transform 0.3s ease-out"
+              }}
             >
-              <svg width="90" height="90" viewBox="0 0 24 24" fill="none" stroke="#0C201B" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" className="animate-check">
-                <path d="M5 12l5 5L20 7"/>
-              </svg>
+              {/* Layer 1: Core Putih/Kuning Terang (Inti Api yang paling panas) */}
+              <div className="absolute top-0 w-[12px] md:w-[18px] h-[30px] md:h-[45px] rounded-full blur-[2px] animate-flicker-core z-30" style={{ background: '#FFFFFF', boxShadow: '0 0 10px #FFFFCC' }}></div>
+              
+              {/* Layer 2: Oranye Terang (Tengah) */}
+              <div className="absolute top-0 w-[24px] md:w-[35px] h-[50px] md:h-[80px] rounded-full blur-[5px] md:blur-[8px] animate-flicker-mid z-20" style={{ background: '#FF9900' }}></div>
+              
+              {/* Layer 3: Merah Gelap (Luar / Ekzos) */}
+              <div className="absolute top-0 w-[35px] md:w-[50px] h-[70px] md:h-[110px] rounded-full blur-[10px] md:blur-[14px] animate-flicker-outer z-10" style={{ background: '#FF3300', opacity: 0.7 }}></div>
             </div>
-          )}
+
+          </div>
+
         </div>
 
-        {/* TEXT AREA (FIXED: Tanpa Kotak Putih Glitch) */}
-        <div className="flex flex-col items-center gap-2">
+        {/* TEXT AREA */}
+        <div className="flex flex-col items-center gap-2 text-center w-full max-w-[90%] md:max-w-[700px]">
           <h1 
-            className="font-inter font-bold italic text-[48px] tracking-tight transition-all duration-500"
-            style={{ 
-              color: status === "success" ? "#FFFFFF" : "#D1D1D1",
-              textShadow: status === "success" ? "0 0 20px rgba(117,255,195,0.4)" : "none"
-            }}
+            className="font-inter font-bold text-[32px] md:text-[48px] tracking-[-0.05em] transition-all duration-500 leading-tight"
+            style={{ color: status === "verifying" ? "#7A7A7A" : "#318C77" }}
           >
-            {status === "verifying" ? "Memverifikasi..." : "Pembayaran Berhasil!"}
+            {status === "verifying" ? "Memverifikasi Pembayaran..." : "Pembayaran Berhasil!"}
           </h1>
           
-          <p className="font-inter text-[18px] opacity-70 tracking-[-0.03em]">
-            {status === "verifying" ? "Mohon tunggu sebentar..." : "Menyiapkan sesi Glambot Anda"}
+          <p className="font-inter text-[15px] md:text-[16px] tracking-[-0.05em] transition-all duration-500" style={{ color: '#565656' }}>
+            {status === "verifying" ? "Mohon tunggu sebentar..." : "Menyiapkan sesi Glambot Anda!"}
           </p>
         </div>
 
       </div>
 
+      {/* KEYFRAMES CSS UNTUK ANIMASI ROKET & API */}
       <style jsx global>{`
-        @keyframes spin-custom {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
+        /* Animasi Getar (Mesin Nyala) */
+        @keyframes rumble {
+          0%, 100% { transform: translate(0, 0) rotate(0deg); }
+          25% { transform: translate(-1px, 1.5px) rotate(-1deg); }
+          50% { transform: translate(1.5px, -1px) rotate(1deg); }
+          75% { transform: translate(-1.5px, -1.5px) rotate(0deg); }
         }
-        .animate-spin-custom {
-          animation: spin-custom 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        .animate-rumble {
+          animation: rumble 0.15s ease-in-out infinite;
         }
-        @keyframes pop-in {
-          0% { transform: scale(0.5); opacity: 0; }
-          100% { transform: scale(1); opacity: 1; }
+
+        /* --- API LAYER LUAR (Merah, bergerak lebih lambat) --- */
+        @keyframes flicker-outer {
+          0%, 100% { transform: scaleY(1) scaleX(1); opacity: 0.6; }
+          50% { transform: scaleY(1.1) scaleX(0.9); opacity: 0.8; }
         }
-        @keyframes check {
-          0% { stroke-dasharray: 100; stroke-dashoffset: 100; }
-          100% { stroke-dasharray: 100; stroke-dashoffset: 0; }
+        .animate-flicker-outer {
+          animation: flicker-outer 0.15s infinite alternate;
         }
-        .animate-pop-in {
-          animation: pop-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+
+        /* --- API LAYER TENGAH (Oranye) --- */
+        @keyframes flicker-mid {
+          0%, 100% { transform: scaleY(1) scaleX(1); opacity: 0.8; }
+          50% { transform: scaleY(1.2) scaleX(0.85); opacity: 1; }
         }
-        .animate-check {
-          animation: check 0.7s ease-out forwards;
-          animation-delay: 0.2s;
+        .animate-flicker-mid {
+          animation: flicker-mid 0.1s infinite alternate;
         }
+
+        /* --- API CORE (Putih/Kuning, bergetar sangat cepat) --- */
+        @keyframes flicker-core {
+          0%, 100% { transform: scaleY(1) scaleX(1); }
+          50% { transform: scaleY(1.3) scaleX(0.8); }
+        }
+        .animate-flicker-core {
+          animation: flicker-core 0.05s infinite alternate;
+        }
+
+        /* Animasi Terbang Tembus Atas Layar */
+        @keyframes launch {
+          0% { transform: translateY(0); }
+          15% { transform: translateY(15px); } /* Turun dikit buat ancang-ancang */
+          100% { transform: translateY(-1200px); } /* Melesat jauh ke atas */
+        }
+        .animate-launch {
+          animation: launch 1.2s cubic-bezier(0.5, -0.1, 0.1, 1) forwards;
+        }
+
+        /* Animasi Fade In Badge Atas */
         @keyframes fade-in-down {
           0% { opacity: 0; transform: translateY(-20px); }
           100% { opacity: 1; transform: translateY(0); }
