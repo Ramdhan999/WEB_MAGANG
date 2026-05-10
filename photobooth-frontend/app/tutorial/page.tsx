@@ -59,7 +59,7 @@ export default function TutorialAlurPage() {
         <h1 
           className="italic tracking-[-0.06em] font-inter font-medium text-[42px] md:text-[64px] lg:text-[96px] bg-clip-text text-transparent leading-tight text-center"
           style={{ 
-            backgroundImage: '#5D5D5D',
+            backgroundImage: 'linear-gradient(90deg, #5D5D5D 0%, #FFFFFF 200%)',
             filter: 'drop-shadow(3px 5px 4px rgba(0, 0, 0, 0.25))' 
           }}
         >
