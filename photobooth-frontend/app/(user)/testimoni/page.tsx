@@ -6,31 +6,49 @@ export default function TestimoniOperatorPage() {
   const [isOperatorMode, setIsOperatorMode] = useState(false);
   const [showWarning, setShowWarning] = useState(false);
   const [timeLeft, setTimeLeft] = useState(209);
-  const [fotoDiambil] = useState(0);
+  const [fotoDiambil, setFotoDiambil] = useState(0);
 
-  // Sinkronisasi sinyal pemicu dari Layar 1 (Kamera Utama)
+  // MENDENGARKAN SINYAL DARI LAYAR 1 (Kamera Utama)
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'triggerWarning') {
         setIsOperatorMode(true);
         setShowWarning(true);
-        
-        setTimeout(() => {
-          setShowWarning(false);
-        }, 8000);
+        // Pop-up warning hilang otomatis setelah 8 detik
+        setTimeout(() => setShowWarning(false), 8000);
+      }
+      
+      // Update jumlah foto jika ada perubahan dari Layar 1
+      if (e.key === 'capturedPhotos') {
+        try {
+          const photos = JSON.parse(e.newValue || "[]");
+          setFotoDiambil(photos.length);
+        } catch (err) {}
       }
     };
+    
+    // Set awal jumlah foto pas halaman diload
+    try {
+      const photos = JSON.parse(localStorage.getItem("capturedPhotos") || "[]");
+      setFotoDiambil(photos.length);
+    } catch (err) {}
 
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Timer hitung mundur
+  // Timer Hitung Mundur Sisa Waktu
   useEffect(() => {
     if (!isOperatorMode || timeLeft <= 0) return;
     const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
     return () => clearInterval(timer);
   }, [isOperatorMode, timeLeft]);
+
+  // FUNGSI SIMULASI SEMENTARA (Opsional buat ngetes tanpa hardware)
+  const handleSimulasiGestur = () => {
+    localStorage.setItem('mulaiFoto', Date.now().toString());
+    alert("Sinyal Gestur Terkirim! Coba cek tab Layar 1, harusnya lagi ngitung mundur.");
+  };
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -48,9 +66,9 @@ export default function TestimoniOperatorPage() {
     { id: 'jempol', img: '/jempol.png' },
   ];
 
-  // =======================================================================
-  // TAMPILAN 1: HALAMAN TESTIMONI (Sebelum Sesi Dimulai)
-  // =======================================================================
+  // =====================================================================
+  // TAMPILAN 1: MODE TESTIMONI (Sebelum Tombol ON di Layar 1 ditekan)
+  // =====================================================================
   if (!isOperatorMode) {
     return (
       <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden select-none" style={{ backgroundColor: '#E3D5D5' }}>
@@ -98,9 +116,9 @@ export default function TestimoniOperatorPage() {
     );
   }
 
-  // =======================================================================
-  // TAMPILAN 2: HALAMAN OPERATOR (Berubah Otomatis Pas Terima Sinyal)
-  // =======================================================================
+  // =====================================================================
+  // TAMPILAN 2: MODE OPERATOR (Setelah Tombol ON di Layar 1 ditekan)
+  // =====================================================================
   return (
     <main className="relative flex flex-col h-screen overflow-hidden select-none" style={{ backgroundColor: '#E3D5D5' }}>
       
@@ -130,7 +148,7 @@ export default function TestimoniOperatorPage() {
         {/* BAGIAN KIRI */}
         <div className="flex-1 flex flex-col gap-4 h-full min-w-0">
           
-          {/* 1. Panduan Bar Atas (FIX LAYOUT: Teks dirapikan proporsional, ikon diatur presisi) */}
+          {/* 1. Panduan Bar Atas */}
           <div className="w-full h-[74px] shrink-0 bg-white border-[1.5px] border-[#54868A] rounded-[23px] flex items-center px-4 relative overflow-hidden shadow-sm">
              <div className="absolute left-0 top-0 bottom-0 w-[16px] bg-[#00FF66]"></div>
              
@@ -138,7 +156,6 @@ export default function TestimoniOperatorPage() {
                 <span className="font-inter font-bold italic text-[18px] tracking-[0.11em] text-[#2D2D2D]">PANDUAN</span>
              </div>
              
-             {/* Ikon Meter */}
              <div className="flex items-center gap-2.5 shrink-0">
                <img src="/meter.png" alt="meter" className="w-[30px] h-[30px] object-contain" />
                <span className="font-inter font-bold italic text-[18px] tracking-[0.05em] text-[#2D2D2D]">3 Meter <span className="font-normal text-[#6F6A6A] not-italic">dari robot</span></span>
@@ -146,7 +163,6 @@ export default function TestimoniOperatorPage() {
 
              <div className="h-[35px] border-r-[1.5px] border-[#54868A] opacity-25 mx-5 shrink-0"></div>
 
-             {/* Ikon Telapak */}
              <div className="flex items-center gap-2.5 shrink-0">
                <img src="/item.png" alt="item" className="w-[30px] h-[30px] object-contain" />
                <span className="font-inter font-bold italic text-[18px] tracking-[0.05em] text-[#2D2D2D]">Telapak = <span className="font-normal text-[#6F6A6A] not-italic">Unlock Gestur</span></span>
@@ -154,30 +170,35 @@ export default function TestimoniOperatorPage() {
 
              <div className="h-[35px] border-r-[1.5px] border-[#54868A] opacity-25 mx-5 shrink-0"></div>
 
-             {/* Status Sensor */}
              <div className="flex items-center gap-2.5 shrink-0">
                <div className="w-[18px] h-[18px] bg-[#40FF00] rounded-full shadow-[0_0_5px_#40FF00]"></div>
                <span className="font-inter font-bold italic text-[18px] tracking-[0.05em] text-[#2D2D2D]">Hijau = <span className="font-normal text-[#6F6A6A] not-italic">Sensor Ready</span></span>
              </div>
           </div>
 
-          {/* 2. Camera Monitor Preview Box (Teks diperkecil agar lega) */}
-          <div className="w-full flex-grow bg-white border-[1.5px] border-[#54868A] rounded-[23px] p-4 shadow-sm flex flex-col overflow-hidden">
-             <div className="w-full flex-grow bg-[#B4B4B4] border-[1.5px] border-[#54868A] rounded-[18px] relative flex flex-col justify-end p-6 overflow-hidden shadow-inner">
+          {/* 2. Camera Monitor Preview Box */}
+          <div className="w-full flex-grow bg-white border-[1.5px] border-[#54868A] rounded-[23px] p-4 shadow-sm flex flex-col overflow-hidden relative">
+             <div className="w-full h-full bg-[#B4B4B4] border-[1.5px] border-[#54868A] rounded-[18px] relative flex flex-col justify-end p-6 overflow-hidden shadow-inner">
+               
+               {/* 📸 STREAM KAMERA DARI GOLANG 📸 */}
+               <img 
+                 src={isOperatorMode ? "http://localhost:8080/api/camera/stream" : undefined}
+                 className="absolute inset-0 w-full h-full object-cover opacity-80" 
+                 crossOrigin="anonymous"
+                 alt="Live View Operator"
+               />
+
                <div className="flex flex-col gap-1 z-10 w-fit">
                  <div className="px-3 py-1 bg-[#295D4E] border border-[#ACFFC1] rounded-[19.5px] w-fit flex items-center gap-2 shadow-sm mb-1">
                    <div className="w-[12px] h-[12px] bg-[#40FF00] rounded-full shadow-[0_0_5px_#40FF00]"></div>
                    <span className="font-hind font-bold text-[14px] tracking-[-0.08em] text-[#BEE1D3] leading-none pt-0.5">LIVE</span>
                  </div>
-                 <span className="font-hind font-semibold text-[36px] leading-[1] text-[#5E5E5E] tracking-[-0.08em]">- menunggu gestur -</span>
+                 <span className="font-hind font-semibold text-[36px] leading-[1] text-[#FFFFFF] drop-shadow-md tracking-[-0.08em]">- menunggu gestur -</span>
                </div>
-               <span className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 font-inter text-[#464646] text-[20px] font-medium opacity-40 text-center pointer-events-none">
-                 (Preview Sensor Kamera Operator)
-               </span>
              </div>
           </div>
 
-          {/* 3. Three Info Statistics Footer Boxes (Angka & Label diperkecil proporsional) */}
+          {/* 3. Three Info Statistics Footer Boxes */}
           <div className="w-full h-[90px] shrink-0 flex gap-4 lg:gap-6">
              <div className="flex-[1.5] bg-white border-[1.5px] border-[#54868A] rounded-[23px] flex flex-col justify-center px-6 shadow-sm leading-none">
                <span className="font-hind font-bold text-[16px] text-[#289368] tracking-[-0.08em] mb-1.5">SISA WAKTU</span>

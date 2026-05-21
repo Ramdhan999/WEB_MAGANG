@@ -1,17 +1,36 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 // DATA DUMMY PAKET
-const initialPackages = [
-  { id: 1, name: "Glambot Solo", badge: "Solo", price: "35,000", duration: 5, people: 1, print: 1, icon: "/paket1.png", status: "Aktif" },
-  { id: 2, name: "Glambot Duo", badge: "Duo", price: "45,000", duration: 5, people: 2, print: 2, icon: "/paket2.png", status: "Aktif" },
-  { id: 3, name: "Glambot Group", badge: "Group", price: "55,000", duration: 7, people: 5, print: 2, icon: "/paket3.png", status: "Aktif" },
-  { id: 4, name: "Glambot Premium", badge: "Premium", price: "75,000", duration: 10, people: 5, print: 4, icon: "/paket4.png", status: "Aktif" },
-];
+// const initialPackages = [
+//   { id: 1, name: "Glambot Solo", badge: "Solo", price: "35,000", duration: 5, people: 1, print: 1, icon: "/paket1.png", status: "Aktif" },
+//   { id: 2, name: "Glambot Duo", badge: "Duo", price: "45,000", duration: 5, people: 2, print: 2, icon: "/paket2.png", status: "Aktif" },
+//   { id: 3, name: "Glambot Group", badge: "Group", price: "55,000", duration: 7, people: 5, print: 2, icon: "/paket3.png", status: "Aktif" },
+//   { id: 4, name: "Glambot Premium", badge: "Premium", price: "75,000", duration: 10, people: 5, print: 4, icon: "/paket4.png", status: "Aktif" },
+// ];
 
 export default function PaketPage() {
-  const [packages, setPackages] = useState(initialPackages);
+  // 1. Tambahin ini di dalem komponen lu
+const [packages, setPackages] = useState<any[]>([]);
+const [formData, setFormData] = useState<any>({}); 
+
+// 2. Tambahin fungsi fetch (biar datanya dapet dari Golang, bukan dummy)
+const fetchPackages = async () => {
+    try {
+        const res = await fetch("http://localhost:8080/api/admin/packages");
+        const data = await res.json();
+        console.log(data)
+        setPackages(data || []);
+  
+
+    } catch (err) { console.error("Gagal load:", err); }
+};
+
+// 3. Panggil fetch tiap halaman dimuat
+useEffect(() => {
+    fetchPackages();
+}, []);
   
   // STATE MODAL PAKET (Tambah/Edit)
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -57,6 +76,9 @@ export default function PaketPage() {
     setIsConfirmOpen(false);
   };
 
+  // Di Next.js lu nanti
+
+
   return (
     <div className="p-8 bg-[#ECF0EE] min-h-screen relative font-inter">
       
@@ -76,23 +98,27 @@ export default function PaketPage() {
         </button>
       </div>
 
+ 
+
       {/* PAKET GRID (Baris Atas) */}
       <div className="grid grid-cols-4 gap-6 mb-10">
-        {packages.map((pkg) => (
-          <div key={pkg.id} className="bg-white p-5 rounded-[14px] border border-gray-300 shadow-sm flex flex-col">
-            
+       {packages.map((pkg) => (
+            <div key={pkg.ID} className="..."> 
             {/* Header Card: Ikon dalam kotak abu-abu + Nama Paket */}
             <div className="flex items-center gap-3 mb-4">
                <div className="w-[56px] h-[56px] bg-[#E3E3E3] border border-gray-300 rounded-[12px] flex items-center justify-center shrink-0 overflow-hidden">
                   <img src={pkg.icon} alt={pkg.name} className="w-[42px] h-[42px] object-cover" />
                </div>
                <div>
+                   <h1 className="text-2xl">{pkg.name}</h1>
                  <h3 className="font-bold text-[18px] text-[#3A3A3A] leading-tight mb-0.5">{pkg.name}</h3>
                  <p className="text-[13px] font-bold italic text-[#386359]">{pkg.badge}</p>
                </div>
             </div>
             
             <h2 className="font-bold text-[32px] text-[#3F6E68] mb-4">Rp {pkg.price}</h2>
+            <h2 className="font-bold text-[32px] text-[#3F6E68] mb-4">Rp {pkg.desc}</h2>
+
             
             {/* 3 Kotak Spesifikasi Pake Ikon Custom */}
             <div className="flex justify-between gap-2 mb-4">
@@ -108,7 +134,7 @@ export default function PaketPage() {
                </div>
                <div className="flex-1 bg-[#ECEAEA] border border-gray-200 rounded-[6px] py-2.5 flex flex-col items-center justify-center">
                  <img src="/cetak1.png" alt="Print" className="w-[18px] h-[18px] object-contain mb-1.5 opacity-70" />
-                 <span className="font-bold text-[11px] text-[#444]">{pkg.print}x</span>
+                 <span className="font-bold text-[11px] text-[#444]">{pkg.Print}x</span>
                  <span className="italic text-[9px] text-[#757575]">PRINT</span>
                </div>
             </div>
