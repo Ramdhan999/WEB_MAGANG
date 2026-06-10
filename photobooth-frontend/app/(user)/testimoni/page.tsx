@@ -1,54 +1,89 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 
-export default function TestimoniOperatorPage() {
+const BACKEND_URL = "http://localhost:8080";
+
+function TestimoniContent() {
+  const searchParams = useSearchParams();
+  const txn = searchParams.get("txn") || "";
+
   const [isOperatorMode, setIsOperatorMode] = useState(false);
   const [showWarning, setShowWarning] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(209);
+  const [timeLeft, setTimeLeft] = useState(300);
   const [fotoDiambil, setFotoDiambil] = useState(0);
 
-  // MENDENGARKAN SINYAL DARI LAYAR 1 (Kamera Utama)
+  // Session info (cuma dipake pas operator mode aktif)
+  const [sessionId, setSessionId] = useState<number | null>(null);
+
+  // ===== LISTEN TRIGGER WARNING DARI KAMERA PAGE (PRESERVED) =====
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'triggerWarning') {
+      if (e.key === "triggerWarning") {
         setIsOperatorMode(true);
         setShowWarning(true);
-        // Pop-up warning hilang otomatis setelah 8 detik
         setTimeout(() => setShowWarning(false), 8000);
       }
-      
-      // Update jumlah foto jika ada perubahan dari Layar 1
-      if (e.key === 'capturedPhotos') {
-        try {
-          const photos = JSON.parse(e.newValue || "[]");
-          setFotoDiambil(photos.length);
-        } catch (err) {}
-      }
     };
-    
-    // Set awal jumlah foto pas halaman diload
-    try {
-      const photos = JSON.parse(localStorage.getItem("capturedPhotos") || "[]");
-      setFotoDiambil(photos.length);
-    } catch (err) {}
 
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
-  // Timer Hitung Mundur Sisa Waktu
+  // ===== FETCH SESSION INFO PAS OPERATOR MODE NYALA =====
+  useEffect(() => {
+    if (!isOperatorMode || !txn) return;
+
+    const fetchSession = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/photo-session/by-transaction/${txn}`);
+        const data = await res.json();
+
+        if (res.ok && data.session) {
+          setSessionId(data.session.id);
+          if (data.duration_seconds) {
+            setTimeLeft(data.duration_seconds);
+          }
+          if (data.session.photos) {
+            setFotoDiambil(data.session.photos.length);
+          }
+        }
+      } catch (err) {
+        console.error("Gagal fetch session:", err);
+      }
+    };
+
+    fetchSession();
+  }, [isOperatorMode, txn]);
+
+  // ===== POLLING JUMLAH FOTO (REPLACE localStorage 'capturedPhotos') =====
+  useEffect(() => {
+    if (!isOperatorMode || !sessionId) return;
+
+    const pollPhotos = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/photo-session/${sessionId}/photos`);
+        if (res.ok) {
+          const data = await res.json();
+          setFotoDiambil(Array.isArray(data) ? data.length : 0);
+        }
+      } catch (err) {
+        // diabaikan
+      }
+    };
+
+    pollPhotos();
+    const interval = setInterval(pollPhotos, 2000); // poll tiap 2 detik
+    return () => clearInterval(interval);
+  }, [isOperatorMode, sessionId]);
+
+  // ===== TIMER COUNTDOWN (PRESERVED) =====
   useEffect(() => {
     if (!isOperatorMode || timeLeft <= 0) return;
     const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
     return () => clearInterval(timer);
   }, [isOperatorMode, timeLeft]);
-
-  // FUNGSI SIMULASI SEMENTARA (Opsional buat ngetes tanpa hardware)
-  const handleSimulasiGestur = () => {
-    localStorage.setItem('mulaiFoto', Date.now().toString());
-    alert("Sinyal Gestur Terkirim! Coba cek tab Layar 1, harusnya lagi ngitung mundur.");
-  };
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -57,13 +92,13 @@ export default function TestimoniOperatorPage() {
   };
 
   const gestures = [
-    { id: '1jari', img: '/1.png' },
-    { id: '2jari', img: '/2.png' },
-    { id: '3jari', img: '/3.png' },
-    { id: '4jari', img: '/4.png' },
-    { id: 'telapak', img: '/5.png' },
-    { id: 'kepalan', img: '/kepalan.png' },
-    { id: 'jempol', img: '/jempol.png' },
+    { id: "1jari", img: "/1.png" },
+    { id: "2jari", img: "/2.png" },
+    { id: "3jari", img: "/3.png" },
+    { id: "4jari", img: "/4.png" },
+    { id: "telapak", img: "/5.png" },
+    { id: "kepalan", img: "/kepalan.png" },
+    { id: "jempol", img: "/jempol.png" },
   ];
 
   // =====================================================================
@@ -71,7 +106,7 @@ export default function TestimoniOperatorPage() {
   // =====================================================================
   if (!isOperatorMode) {
     return (
-      <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden select-none" style={{ backgroundColor: '#E3D5D5' }}>
+      <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden select-none" style={{ backgroundColor: "#E3D5D5" }}>
         <div className="absolute top-0 left-0 w-full h-[91px] bg-[#464646] flex items-center justify-between px-8 z-10 shadow-md">
           <div className="flex items-center gap-4">
             <div className="w-[77px] h-[77px] bg-gradient-to-b from-[#48CF8D] to-[#245F69] border border-[#ACFFC1] rounded-[9px] flex items-center justify-center">
@@ -120,107 +155,99 @@ export default function TestimoniOperatorPage() {
   // TAMPILAN 2: MODE OPERATOR (Setelah Tombol ON di Layar 1 ditekan)
   // =====================================================================
   return (
-    <main className="relative flex flex-col h-screen overflow-hidden select-none" style={{ backgroundColor: '#E3D5D5' }}>
-      
-      {/* HEADER TOP BAR LAYAR OPERATOR */}
+    <main className="relative flex flex-col h-screen overflow-hidden select-none" style={{ backgroundColor: "#E3D5D5" }}>
+
       <div className="w-full h-[91px] bg-[#464646] shrink-0 flex items-center justify-between px-6 md:px-8 relative z-20 shadow-md">
         <div className="flex items-center gap-4">
           <div className="w-[60px] h-[60px] md:w-[77px] md:h-[77px] bg-gradient-to-b from-[#48CF8D] to-[#245F69] border border-[#ACFFC1] rounded-[9px] flex items-center justify-center">
-             <img src="/image4.png" alt="logo" className="w-[30px] h-[30px] md:w-[41px] md:h-[41px] object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.parentElement!.innerHTML = '<span class="text-3xl text-[#ACFFC1]">✨</span>'; }} />
+            <img src="/image4.png" alt="logo" className="w-[30px] h-[30px] md:w-[41px] md:h-[41px] object-contain" onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.parentElement!.innerHTML = '<span class="text-3xl text-[#ACFFC1]">✨</span>'; }} />
           </div>
-          <h1 className="font-inter font-black text-[32px] md:text-[40px] bg-clip-text text-transparent tracking-tight leading-none" style={{ backgroundImage: 'linear-gradient(90deg, #FFFFFF 0%, #999999 100%)' }}>
+          <h1 className="font-inter font-black text-[32px] md:text-[40px] bg-clip-text text-transparent tracking-tight leading-none" style={{ backgroundImage: "linear-gradient(90deg, #FFFFFF 0%, #999999 100%)" }}>
             GLAMBOTSTUDIO
           </h1>
           <div className="hidden md:flex ml-4 px-6 h-[39px] items-center bg-gradient-to-b from-[#48CF8D] to-[#245F69] border border-[#ACFFC1] rounded-[19.5px]">
             <span className="font-inter font-bold italic text-[18px] tracking-[0.11em] text-[#2D2D2D] leading-none">LAYAR OPERATOR</span>
           </div>
         </div>
-        
-        <div className="flex items-center gap-3 px-6 h-[39px] border border-[#ACFFC1] rounded-[19.5px]" style={{ backgroundColor: '#295D4E' }}>
+
+        <div className="flex items-center gap-3 px-6 h-[39px] border border-[#ACFFC1] rounded-[19.5px]" style={{ backgroundColor: "#295D4E" }}>
           <div className="w-[18px] h-[18px] bg-[#40FF00] rounded-full shadow-[0_0_10px_#40FF00]"></div>
           <span className="hidden md:block font-inter font-bold italic text-[18px] tracking-[0.11em] text-[#C2C2C2] leading-none pt-0.5">SENSOR AKTIF</span>
         </div>
       </div>
 
-      {/* CORE WORKSPACE LAYOUT */}
       <div className="w-full max-w-[1866px] mx-auto flex-grow flex gap-4 lg:gap-6 p-4 lg:p-6 overflow-hidden">
-        
-        {/* BAGIAN KIRI */}
+
         <div className="flex-1 flex flex-col gap-4 h-full min-w-0">
-          
-          {/* 1. Panduan Bar Atas */}
+
           <div className="w-full h-[74px] shrink-0 bg-white border-[1.5px] border-[#54868A] rounded-[23px] flex items-center px-4 relative overflow-hidden shadow-sm">
-             <div className="absolute left-0 top-0 bottom-0 w-[16px] bg-[#00FF66]"></div>
-             
-             <div className="ml-4 w-[130px] h-[45px] bg-gradient-to-b from-[#48CF8D] to-[#245F69] border border-[#ACFFC1] rounded-[10px] flex items-center justify-center mr-6 shadow-sm shrink-0">
-                <span className="font-inter font-bold italic text-[18px] tracking-[0.11em] text-[#2D2D2D]">PANDUAN</span>
-             </div>
-             
-             <div className="flex items-center gap-2.5 shrink-0">
-               <img src="/meter.png" alt="meter" className="w-[30px] h-[30px] object-contain" />
-               <span className="font-inter font-bold italic text-[18px] tracking-[0.05em] text-[#2D2D2D]">3 Meter <span className="font-normal text-[#6F6A6A] not-italic">dari robot</span></span>
-             </div>
+            <div className="absolute left-0 top-0 bottom-0 w-[16px] bg-[#00FF66]"></div>
 
-             <div className="h-[35px] border-r-[1.5px] border-[#54868A] opacity-25 mx-5 shrink-0"></div>
+            <div className="ml-4 w-[130px] h-[45px] bg-gradient-to-b from-[#48CF8D] to-[#245F69] border border-[#ACFFC1] rounded-[10px] flex items-center justify-center mr-6 shadow-sm shrink-0">
+              <span className="font-inter font-bold italic text-[18px] tracking-[0.11em] text-[#2D2D2D]">PANDUAN</span>
+            </div>
 
-             <div className="flex items-center gap-2.5 shrink-0">
-               <img src="/item.png" alt="item" className="w-[30px] h-[30px] object-contain" />
-               <span className="font-inter font-bold italic text-[18px] tracking-[0.05em] text-[#2D2D2D]">Telapak = <span className="font-normal text-[#6F6A6A] not-italic">Unlock Gestur</span></span>
-             </div>
+            <div className="flex items-center gap-2.5 shrink-0">
+              <img src="/meter.png" alt="meter" className="w-[30px] h-[30px] object-contain" />
+              <span className="font-inter font-bold italic text-[18px] tracking-[0.05em] text-[#2D2D2D]">3 Meter <span className="font-normal text-[#6F6A6A] not-italic">dari robot</span></span>
+            </div>
 
-             <div className="h-[35px] border-r-[1.5px] border-[#54868A] opacity-25 mx-5 shrink-0"></div>
+            <div className="h-[35px] border-r-[1.5px] border-[#54868A] opacity-25 mx-5 shrink-0"></div>
 
-             <div className="flex items-center gap-2.5 shrink-0">
-               <div className="w-[18px] h-[18px] bg-[#40FF00] rounded-full shadow-[0_0_5px_#40FF00]"></div>
-               <span className="font-inter font-bold italic text-[18px] tracking-[0.05em] text-[#2D2D2D]">Hijau = <span className="font-normal text-[#6F6A6A] not-italic">Sensor Ready</span></span>
-             </div>
+            <div className="flex items-center gap-2.5 shrink-0">
+              <img src="/item.png" alt="item" className="w-[30px] h-[30px] object-contain" />
+              <span className="font-inter font-bold italic text-[18px] tracking-[0.05em] text-[#2D2D2D]">Telapak = <span className="font-normal text-[#6F6A6A] not-italic">Unlock Gestur</span></span>
+            </div>
+
+            <div className="h-[35px] border-r-[1.5px] border-[#54868A] opacity-25 mx-5 shrink-0"></div>
+
+            <div className="flex items-center gap-2.5 shrink-0">
+              <div className="w-[18px] h-[18px] bg-[#40FF00] rounded-full shadow-[0_0_5px_#40FF00]"></div>
+              <span className="font-inter font-bold italic text-[18px] tracking-[0.05em] text-[#2D2D2D]">Hijau = <span className="font-normal text-[#6F6A6A] not-italic">Sensor Ready</span></span>
+            </div>
           </div>
 
-          {/* 2. Camera Monitor Preview Box */}
           <div className="w-full flex-grow bg-white border-[1.5px] border-[#54868A] rounded-[23px] p-4 shadow-sm flex flex-col overflow-hidden relative">
-             <div className="w-full h-full bg-[#B4B4B4] border-[1.5px] border-[#54868A] rounded-[18px] relative flex flex-col justify-end p-6 overflow-hidden shadow-inner">
-               
-               {/* 📸 STREAM KAMERA DARI GOLANG 📸 */}
-               <img 
-                 src={isOperatorMode ? "http://localhost:8080/api/camera/stream" : undefined}
-                 className="absolute inset-0 w-full h-full object-cover opacity-80" 
-                 crossOrigin="anonymous"
-                 alt="Live View Operator"
-               />
+            <div className="w-full h-full bg-[#B4B4B4] border-[1.5px] border-[#54868A] rounded-[18px] relative flex flex-col justify-end p-6 overflow-hidden shadow-inner">
 
-               <div className="flex flex-col gap-1 z-10 w-fit">
-                 <div className="px-3 py-1 bg-[#295D4E] border border-[#ACFFC1] rounded-[19.5px] w-fit flex items-center gap-2 shadow-sm mb-1">
-                   <div className="w-[12px] h-[12px] bg-[#40FF00] rounded-full shadow-[0_0_5px_#40FF00]"></div>
-                   <span className="font-hind font-bold text-[14px] tracking-[-0.08em] text-[#BEE1D3] leading-none pt-0.5">LIVE</span>
-                 </div>
-                 <span className="font-hind font-semibold text-[36px] leading-[1] text-[#FFFFFF] drop-shadow-md tracking-[-0.08em]">- menunggu gestur -</span>
-               </div>
-             </div>
+              <img
+                src={isOperatorMode ? `${BACKEND_URL}/api/camera/stream` : undefined}
+                className="absolute inset-0 w-full h-full object-cover opacity-80"
+                crossOrigin="anonymous"
+                alt="Live View Operator"
+              />
+
+              <div className="flex flex-col gap-1 z-10 w-fit">
+                <div className="px-3 py-1 bg-[#295D4E] border border-[#ACFFC1] rounded-[19.5px] w-fit flex items-center gap-2 shadow-sm mb-1">
+                  <div className="w-[12px] h-[12px] bg-[#40FF00] rounded-full shadow-[0_0_5px_#40FF00]"></div>
+                  <span className="font-hind font-bold text-[14px] tracking-[-0.08em] text-[#BEE1D3] leading-none pt-0.5">LIVE</span>
+                </div>
+                <span className="font-hind font-semibold text-[36px] leading-[1] text-[#FFFFFF] drop-shadow-md tracking-[-0.08em]">- menunggu gestur -</span>
+              </div>
+            </div>
           </div>
 
-          {/* 3. Three Info Statistics Footer Boxes */}
           <div className="w-full h-[90px] shrink-0 flex gap-4 lg:gap-6">
-             <div className="flex-[1.5] bg-white border-[1.5px] border-[#54868A] rounded-[23px] flex flex-col justify-center px-6 shadow-sm leading-none">
-               <span className="font-hind font-bold text-[16px] text-[#289368] tracking-[-0.08em] mb-1.5">SISA WAKTU</span>
-               <span className="font-hind font-semibold text-[40px] text-[#285B47] tracking-[-0.08em]">{formatTime(timeLeft)}</span>
-             </div>
-             <div className="flex-1 bg-white border-[1.5px] border-[#54868A] rounded-[23px] flex flex-col justify-center px-6 shadow-sm leading-none">
-               <span className="font-hind font-bold text-[16px] text-[#289368] tracking-[-0.08em] mb-1.5">FOTO DIAMBIL</span>
-               <span className="font-hind font-semibold text-[40px] text-[#285B47] tracking-[-0.08em]">{fotoDiambil} foto</span>
-             </div>
-             <div className="flex-1 bg-white border-[1.5px] border-[#54868A] rounded-[23px] flex flex-col justify-center px-6 shadow-sm leading-none">
-               <span className="font-hind font-bold text-[16px] text-[#289368] tracking-[-0.08em] mb-1.5">JARAK AMAN</span>
-               <span className="font-hind font-semibold text-[40px] text-[#285B47] tracking-[-0.08em]">3 Meter</span>
-             </div>
+            <div className="flex-[1.5] bg-white border-[1.5px] border-[#54868A] rounded-[23px] flex flex-col justify-center px-6 shadow-sm leading-none">
+              <span className="font-hind font-bold text-[16px] text-[#289368] tracking-[-0.08em] mb-1.5">SISA WAKTU</span>
+              <span className="font-hind font-semibold text-[40px] text-[#285B47] tracking-[-0.08em]">{formatTime(timeLeft)}</span>
+            </div>
+            <div className="flex-1 bg-white border-[1.5px] border-[#54868A] rounded-[23px] flex flex-col justify-center px-6 shadow-sm leading-none">
+              <span className="font-hind font-bold text-[16px] text-[#289368] tracking-[-0.08em] mb-1.5">FOTO DIAMBIL</span>
+              <span className="font-hind font-semibold text-[40px] text-[#285B47] tracking-[-0.08em]">{fotoDiambil} foto</span>
+            </div>
+            <div className="flex-1 bg-white border-[1.5px] border-[#54868A] rounded-[23px] flex flex-col justify-center px-6 shadow-sm leading-none">
+              <span className="font-hind font-bold text-[16px] text-[#289368] tracking-[-0.08em] mb-1.5">JARAK AMAN</span>
+              <span className="font-hind font-semibold text-[40px] text-[#285B47] tracking-[-0.08em]">3 Meter</span>
+            </div>
           </div>
 
         </div>
 
-        {/* BAGIAN KANAN (Sidebar Gestur Robot) */}
         <div className="w-[260px] shrink-0 h-full bg-white border-[1.5px] border-[#54868A] rounded-[23px] p-5 lg:p-6 flex flex-col shadow-sm">
           <h2 className="font-hind font-semibold text-[18px] text-[#105249] tracking-[-0.08em] uppercase mb-2 leading-none">GESTUR ROBOT</h2>
           <div className="w-full h-0 border-t-[2px] border-dashed border-[#54868A] mb-5"></div>
-          
+
           <div className="grid grid-cols-3 gap-3">
             {gestures.map((g, i) => (
               <div key={g.id} className="w-full aspect-square bg-[#EAEAEA] border border-[#54868A] rounded-[6px] flex items-center justify-center relative overflow-hidden shadow-inner">
@@ -232,23 +259,22 @@ export default function TestimoniOperatorPage() {
 
       </div>
 
-      {/* MODAL POP-UP WARNING PANDUAN SINGKAT 3 HAL WAJIB TAHU */}
       {showWarning && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in">
           <div className="w-[90%] max-w-[700px] bg-[#E3D5D5] border-2 border-[#54868A] rounded-[30px] p-10 flex flex-col shadow-2xl relative animate-scale-up">
-            
+
             <button onClick={() => setShowWarning(false)} className="absolute top-6 right-6 text-[#54868A] hover:text-[#1D4F42] transition-colors outline-none">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
 
             <div className="flex justify-center mb-8">
-               <div className="px-8 py-2 bg-gradient-to-r from-[#48C5A6] to-[#35967E] rounded-full border-[2px] border-[#318570] shadow-md">
-                 <span className="font-inter font-bold italic text-[22px] tracking-[0.11em] text-[#1D4F42]">PANDUAN SINGKAT</span>
-               </div>
+              <div className="px-8 py-2 bg-gradient-to-r from-[#48C5A6] to-[#35967E] rounded-full border-[2px] border-[#318570] shadow-md">
+                <span className="font-inter font-bold italic text-[22px] tracking-[0.11em] text-[#1D4F42]">PANDUAN SINGKAT</span>
+              </div>
             </div>
-            
+
             <h2 className="font-inter font-black text-[42px] text-center text-[#303030] mb-3 leading-tight tracking-tight">
-              Before we start — <br/>3 Things you must know
+              Before we start — <br />3 Things you must know
             </h2>
             <p className="font-hind text-[22px] text-center text-[#54868A] mb-10 font-medium tracking-tight">Pegang panduan ini selama sesi foto berlangsung.</p>
 
@@ -287,5 +313,13 @@ export default function TestimoniOperatorPage() {
         .animate-scale-up { animation: scale-up 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
       `}</style>
     </main>
+  );
+}
+
+export default function TestimoniOperatorPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#E3D5D5]">Loading...</div>}>
+      <TestimoniContent />
+    </Suspense>
   );
 }

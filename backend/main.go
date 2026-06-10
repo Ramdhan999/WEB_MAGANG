@@ -2,7 +2,8 @@ package main
 
 import (
 	"backend-photobooth/controllers"
-	"backend-photobooth/services" // Sesuaikan dengan nama module lu
+	"backend-photobooth/database"
+	"backend-photobooth/services"
 	"bytes"
 	"fmt"
 	"image"
@@ -11,19 +12,15 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
-
-	"backend-photobooth/database"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/midtrans/midtrans-go"
-	"github.com/midtrans/midtrans-go/snap" // WAJIB DITAMBAHIN BUAT BIKIN TOKEN SNAP
 )
-
-type PaymentRequest struct {
-	Paket string `json:"paket" binding:"required"`
-}
 
 // --- FUNGSI BUAT NGE-FLIP GAMBAR (EFEK CERMIN) ---
 func flipJPEGHorizontal(frame []byte) []byte {
@@ -95,11 +92,11 @@ func main() {
 	r := gin.Default()
 	database.ConnectDB()
 	godotenv.Load()
-	// --- ROUTE ADMIN PAKET ---
 
+	// --- CORS MIDDLEWARE ---
 	r.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -108,6 +105,7 @@ func main() {
 		c.Next()
 	})
 
+	// --- ROUTE ADMIN PAKET ---
 	admin := r.Group("/api/admin")
 	{
 		admin.GET("/packages", controllers.GetPackages)
@@ -116,29 +114,99 @@ func main() {
 		admin.DELETE("/packages/:id", controllers.DeletePackage)
 	}
 
+	// Pastikan folder uploads ada
+	os.MkdirAll("./uploads", 0755)
+
+	// Endpoint upload gambar
+	r.POST("/api/admin/upload", func(c *gin.Context) {
+		file, err := c.FormFile("file")
+		if err != nil {
+			c.JSON(400, gin.H{"error": "File tidak ditemukan"})
+			return
+		}
+
+		// Validasi tipe file (image only)
+		contentType := file.Header.Get("Content-Type")
+		if !strings.HasPrefix(contentType, "image/") {
+			c.JSON(400, gin.H{"error": "File harus berupa gambar"})
+			return
+		}
+
+		// Generate filename unik
+		ext := filepath.Ext(file.Filename)
+		filename := fmt.Sprintf("paket_%d%s", time.Now().UnixNano(), ext)
+		savePath := "./uploads/" + filename
+
+		if err := c.SaveUploadedFile(file, savePath); err != nil {
+			c.JSON(500, gin.H{"error": "Gagal simpan file: " + err.Error()})
+			return
+		}
+
+		// Return URL absolute biar bisa diakses dari Next.js
+		c.JSON(200, gin.H{
+			"url": "http://localhost:8080/uploads/" + filename,
+		})
+	})
+
+	// Serve static files dari folder uploads
+	r.Static("/uploads", "./uploads")
+
+	// --- ROUTE ADMIN DASHBOARD ---
+	adminDashboard := r.Group("/api/admin")
+	{
+		adminDashboard.GET("/dashboard/stats", controllers.GetDashboardStats)
+		adminDashboard.GET("/dashboard/revenue-chart", controllers.GetRevenueChart)         // ⬅️ TAMBAH
+		adminDashboard.GET("/dashboard/popular-templates", controllers.GetPopularTemplates) // ⬅️ TAMBAH
+		adminDashboard.GET("/transactions/recent", controllers.GetRecentTransactions)
+		adminDashboard.GET("/transactions", controllers.GetAllTransactions)
+
+		// --- Route Template & Frame ---
+		admin.GET("/templates", controllers.GetTemplates)
+		admin.POST("/templates", controllers.CreateTemplate)
+		admin.PUT("/templates/:id", controllers.UpdateTemplate)
+		admin.DELETE("/templates/:id", controllers.DeleteTemplate)
+
+		// --- ROUTE PHOTO SESSION ---
+		r.POST("/api/photo-session/upsert", controllers.UpsertPhotoSession)
+		r.POST("/api/photo-session/:session_id/capture", controllers.CapturePhoto)
+		r.GET("/api/photo-session/:session_id/photos", controllers.GetSessionPhotos)
+		r.POST("/api/photo-session/:session_id/capture-upload", controllers.CaptureUpload)
+		r.GET("/api/photo-session/by-transaction/:transaction_id", controllers.GetSessionByTransaction)
+
+		// --- SERVE FOTO HASIL DSLR ke Next.js ---
+		r.Static("/photos", "./hasil_foto_dslr")
+
+		// --- Route Filter ---
+		admin.GET("/filters", controllers.GetFilters)
+		admin.POST("/filters", controllers.CreateFilter)
+		admin.PUT("/filters/:id", controllers.UpdateFilter)
+		admin.DELETE("/filters/:id", controllers.DeleteFilter)
+
+		// USER-FACING filter (active only)
+		r.GET("/api/filters", controllers.GetActiveFilters)
+
+		// USER-FACING voucher
+		r.POST("/api/voucher/validate", controllers.ValidateVoucher)
+		r.POST("/api/payment/free", controllers.CreateFreeTransaction)
+
+		// ADMIN voucher CRUD (skip kalo udah ada)
+		r.GET("/api/admin/vouchers", controllers.GetVouchers)
+		r.POST("/api/admin/vouchers", controllers.CreateVoucher)
+		r.PUT("/api/admin/vouchers/:id", controllers.UpdateVoucher)
+		r.DELETE("/api/admin/vouchers/:id", controllers.DeleteVoucher)
+
+		// --- Route Hardware ---
+		admin.GET("/hardware", controllers.GetHardwareStatus)
+		admin.PUT("/hardware", controllers.UpdateHardwareStatus)
+	}
+
+	// --- MIDTRANS SETUP ---
 	midtrans.ServerKey = os.Getenv("MIDTRANS_SERVER_KEY")
 	midtrans.Environment = midtrans.Sandbox
-
-	// Setup CORS
 
 	robotBaseURL := "https://activism-buggy-crier.ngrok-free.dev"
 
 	// --- ENDPOINT DSLR (Panggil dari services/digicam.go) ---
-
-	// // 1. Stream Live View DSLR ke Frontend
-	// r.GET("/api/camera/stream", func(c *gin.Context) {
-	// 	c.Writer.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary=frame")
-	// 	for {
-	// 		frame, err := services.GetLiveViewFrame()
-	// 		if err != nil {
-	// 			continue
-	// 		}
-	// 		c.Writer.Write([]byte("--frame\r\nContent-Type: image/jpeg\r\n\r\n"))
-	// 		c.Writer.Write(frame)
-	// 		c.Writer.Write([]byte("\r\n"))
-	// 		time.Sleep(40 * time.Millisecond) // Sekitar 25 FPS
-	// 	}
-	// })
 
 	// 2. Trigger Jepret DSLR
 	r.POST("/api/camera/capture", func(c *gin.Context) {
@@ -155,7 +223,7 @@ func main() {
 		})
 	})
 
-	// --- ENDPOINT ROBOT & MIDTRANS (Tetap Ada) ---
+	// --- ENDPOINT ROBOT ---
 
 	r.GET("/api/camera/stream", func(c *gin.Context) {
 		// Panggil fungsi StreamLiveView, passing Writer dan Request dari Gin
@@ -174,12 +242,25 @@ func main() {
 	})
 
 	r.POST("/api/robot/enable", func(c *gin.Context) {
+		services.RobotSetEnabled(true) // ⬅️ buat background poller
 		http.Post(robotBaseURL+"/robot/enable", "application/json", nil)
-		c.JSON(200, gin.H{"status": "success"})
+		fmt.Println("🤖 [ROBOT] Enabled — poller aktif")
+		c.JSON(200, gin.H{"status": "success", "message": "Robot diaktifkan"})
+	})
+
+	// ============================================================
+	// ⬇️ ROUTE BARU: DISABLE ROBOT (dipanggil pas timer sesi habis)
+	// ============================================================
+	r.POST("/api/robot/disable", func(c *gin.Context) {
+		services.RobotSetEnabled(false)                                   // ⬅️ poller bakal skip iterasi
+		http.Post(robotBaseURL+"/robot/disable", "application/json", nil) // best-effort: kasih tau robot juga
+		fmt.Println("🛑 [ROBOT] Disabled — poller skip iterasi, robot diberi sinyal stop")
+		c.JSON(200, gin.H{"status": "success", "message": "Robot dinonaktifkan"})
 	})
 
 	r.POST("/api/robot/done", func(c *gin.Context) {
-		services.SetTrigger() // Nyalain saklar di memori
+		services.SetTrigger()    // saklar lama (backward compat)
+		services.RobotFireDone() // ⬅️ trigger countdown via /api/robot/state
 
 		fmt.Println("🤖 [ROBOT] Sinyal Done masuk! Robot siap dijepret.")
 		c.JSON(200, gin.H{
@@ -196,55 +277,80 @@ func main() {
 	})
 
 	// =====================================================================
-	// ENDPOINT BARU BUAT MIDTRANS (QRIS POPUP)
+	// ROBOT WEBHOOK + SIMULASI + STATE (buat suara & countdown)
 	// =====================================================================
-	r.POST("/api/payment", func(c *gin.Context) {
-		var req PaymentRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, gin.H{"error": err.Error()})
-			return
+
+	// Webhook: robot lagi gerak ke preset → preset confirmed (suara 4)
+	r.POST("/api/robot/moving", func(c *gin.Context) {
+		var req struct {
+			Preset int `json:"preset"`
 		}
-
-		// Nentuin harga berdasarkan parameter paket dari Next.js
-		var harga int64
-		switch req.Paket {
-		case "solo":
-			harga = 35000
-		case "duo":
-			harga = 45000
-		case "group":
-			harga = 55000
-		case "premium":
-			harga = 75000
-		default:
-			harga = 75000 // Harga default kalau paket ga kedetek
+		c.ShouldBindJSON(&req)
+		if req.Preset > 0 {
+			services.RobotConfirmPreset(req.Preset)
 		}
-
-		// Bikin Order ID unik pake timestamp
-		orderID := fmt.Sprintf("GLAMBOT-%d", time.Now().Unix())
-
-		// Setup request Snap Midtrans
-		reqSnap := &snap.Request{
-			TransactionDetails: midtrans.TransactionDetails{
-				OrderID:  orderID,
-				GrossAmt: harga,
-			},
-			CreditCard: &snap.CreditCardDetails{
-				Secure: true,
-			},
-		}
-
-		// Minta token ke server Midtrans
-		snapResp, midErr := snap.CreateTransaction(reqSnap)
-		if midErr != nil {
-			fmt.Println("Gagal bikin transaksi Midtrans:", midErr)
-			c.JSON(500, gin.H{"error": "Gagal buat transaksi"})
-			return
-		}
-
-		// Balikin token ke Next.js biar bisa nampilin popup
-		c.JSON(200, gin.H{"token": snapResp.Token})
+		c.JSON(200, gin.H{"status": "moving", "current_preset": req.Preset})
 	})
+
+	// Simulasi (dipanggil lewat curl buat testing tanpa robot)
+	r.POST("/api/sim/on", func(c *gin.Context) {
+		services.SimSetEnabled(true)
+		c.JSON(200, gin.H{"sim": "on"})
+	})
+	r.POST("/api/sim/off", func(c *gin.Context) {
+		services.SimSetEnabled(false)
+		c.JSON(200, gin.H{"sim": "off"})
+	})
+	r.POST("/api/sim/palm", func(c *gin.Context) {
+		services.RobotFirePalm()
+		c.JSON(200, gin.H{"event": "palm"})
+	})
+	r.POST("/api/sim/gesture", func(c *gin.Context) {
+		name := c.Query("name")
+		if name == "" {
+			name = "gesture"
+		}
+		services.RobotFireGesture(name)
+		c.JSON(200, gin.H{"event": "gesture", "name": name})
+	})
+	r.POST("/api/sim/preset", func(c *gin.Context) {
+		n, _ := strconv.Atoi(c.Query("n"))
+		if n == 0 {
+			n = 1
+		}
+		services.RobotConfirmPreset(n) // suara 4 (preset confirmed)
+
+		// Auto lanjut: setelah jeda, robot "done" → countdown 3-2-1 → jepret
+		// (niru robot beneran: gerak ke preset dulu, baru siap foto)
+		go func() {
+			time.Sleep(3 * time.Second) // jeda biar suara 4 sempet bunyi dulu
+			services.RobotFireDone()
+		}()
+
+		c.JSON(200, gin.H{"event": "preset", "n": n, "auto_done": true})
+	})
+
+	// State buat frontend polling (suara + countdown)
+	r.GET("/api/robot/state", func(c *gin.Context) {
+		c.JSON(200, services.RobotStateJSON())
+	})
+
+	r.POST("/api/print/execute", controllers.PrintExecute)
+
+	// =====================================================================
+	// ROUTE PAYMENT (Midtrans + Transaction tracking)
+	// Sekarang udah dipindah ke controllers/payment.go
+	// =====================================================================
+	r.POST("/api/payment", controllers.CreatePayment)
+	r.POST("/api/payment/confirm", controllers.ConfirmPayment)
+	r.GET("/api/transactions/:transaction_id", controllers.GetTransaction)
+
+	// --- CETAK TAMBAHAN & OUTPUT TRACKING ---  ⬅️ TAMBAH 3 INI
+	r.POST("/api/print/extra", controllers.CreatePrintPayment)
+	r.POST("/api/print/done", controllers.ConfirmPrint)
+	r.POST("/api/digital/done", controllers.ConfirmDigital)
+
+	go services.StartRobotDetectionPoller() // ⬅️ poller deteksi robot (mode real)
 
 	fmt.Println("🚀 Backend Golang DSLR + Robot nyala di http://localhost:8080")
 	r.Run(":8080")

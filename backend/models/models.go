@@ -25,15 +25,17 @@ type Package struct {
 
 // 2. TABEL TRANSAKSI (Sesuai analisis lu bro)
 type Transaction struct {
-	ID            uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	TransactionID string    `gorm:"type:varchar(50);uniqueIndex;not null" json:"transaction_id"` // TXN-20260521-0001
-	OrderID       string    `gorm:"type:varchar(50);index" json:"order_id"`                      // GLAMBOT-1716382910
-	PackageID     string    `gorm:"type:varchar(50);not null" json:"package_id"`                 // Ngedit ke package_id di tabel paket
-	Amount        int       `gorm:"not null" json:"amount"`
-	PaymentType   string    `gorm:"type:varchar(30)" json:"payment_type"`             // qris, gopay, dll
-	Status        string    `gorm:"type:varchar(20);default:'pending'" json:"status"` // pending, success, failed, dll
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID             uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	TransactionID  string    `gorm:"type:varchar(50);uniqueIndex;not null" json:"transaction_id"` // TXN-20260521-0001
+	OrderID        string    `gorm:"type:varchar(50);index" json:"order_id"`                      // GLAMBOT-1716382910
+	PackageID      string    `gorm:"type:varchar(50);not null" json:"package_id"`                 // Ngedit ke package_id di tabel paket
+	Amount         int       `gorm:"not null" json:"amount"`
+	PaymentType    string    `gorm:"type:varchar(30)" json:"payment_type"`             // qris, gopay, dll
+	Status         string    `gorm:"type:varchar(20);default:'pending'" json:"status"` // pending, success, failed, dll
+	VoucherCode    string    `gorm:"type:varchar(50)" json:"voucher_code"`             // ⬅️ TAMBAH
+	DiscountAmount int       `gorm:"default:0" json:"discount_amount"`                 // ⬅️ TAMBAH
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type PhotoSession struct {
@@ -48,6 +50,17 @@ type PhotoSession struct {
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 	Photos          []Photo   `gorm:"foreignKey:SessionID;constraint:OnDelete:CASCADE;" json:"photos"` // Relasi 1 ke N tabel photos
+}
+
+// TABEL FILTER FOTO
+type Filter struct {
+	ID        uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name      string    `gorm:"type:varchar(100);not null" json:"name"`
+	CSS       string    `gorm:"type:varchar(255);not null" json:"css"`
+	BgColor   string    `gorm:"type:varchar(50)" json:"bg_color"`
+	IsActive  bool      `gorm:"default:true" json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // Tabel: photos
@@ -89,17 +102,26 @@ type Setting struct {
 
 // TABEL TEMPLATE & FRAME
 type Template struct {
-	ID          uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name        string    `gorm:"type:varchar(100);not null" json:"name"`
-	Description string    `gorm:"type:varchar(255)" json:"description"` // Contoh: "Frame PNG · 3 foto · 1 sesi"
-	Category    string    `gorm:"type:varchar(30)" json:"category"`     // Buat filter tab: STRIP, GRID, COLLAGE, DUO
-	LayoutType  string    `gorm:"type:varchar(50)" json:"layout_type"`  // Dari dropdown: "Photo Strip (3 foto)", dll
-	Theme       string    `gorm:"type:varchar(50)" json:"theme"`        // Dari dropdown: "Classic (Gold)", dll
-	IsCustomPNG bool      `gorm:"default:false" json:"is_custom_png"`   // Toggle Mode Frame PNG Kustom
-	FramePath   string    `gorm:"type:varchar(255)" json:"frame_path"`  // Buat nyimpen path gambar PNG transparannya nanti
-	IsActive    bool      `gorm:"default:true" json:"is_active"`        // Toggle Aktifkan template
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          uint   `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name        string `gorm:"type:varchar(100);not null" json:"name"`
+	Description string `gorm:"type:varchar(255)" json:"description"` // Contoh: "Frame PNG · 3 foto · 1 sesi"
+	Category    string `gorm:"type:varchar(30)" json:"category"`     // Buat filter tab: STRIP, GRID, COLLAGE, DUO
+	LayoutType  string `gorm:"type:varchar(50)" json:"layout_type"`  // Dari dropdown: "Photo Strip (3 foto)", dll
+	Theme       string `gorm:"type:varchar(50)" json:"theme"`        // Dari dropdown: "Classic (Gold)", dll
+	IsCustomPNG bool   `gorm:"default:false" json:"is_custom_png"`   // Toggle Mode Frame PNG Kustom
+	FramePath   string `gorm:"type:varchar(255)" json:"frame_path"`  // Buat nyimpen path gambar PNG transparannya nanti
+	SlotCount   int    `gorm:"default:4" json:"slot_count"`
+
+	OverlayTop    float64 `gorm:"default:10" json:"overlay_top"`    // % dari atas
+	OverlayLeft   float64 `gorm:"default:10" json:"overlay_left"`   // % dari kiri
+	OverlayRight  float64 `gorm:"default:10" json:"overlay_right"`  // % dari kanan
+	OverlayBottom float64 `gorm:"default:10" json:"overlay_bottom"` // % dari bawah
+	OverlayGap    float64 `gorm:"default:4" json:"overlay_gap"`     // % jarak antar slot
+	OverlayCols   int     `gorm:"default:1" json:"overlay_cols"`    // 1=strip, 2=grid 2x, 3=grid 3x
+
+	IsActive  bool      `gorm:"default:true" json:"is_active"` // Toggle Aktifkan template
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // TABEL VOUCHER
