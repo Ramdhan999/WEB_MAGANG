@@ -31,6 +31,7 @@ func ConnectDB() {
 		&models.Template{}, // <--- Tambahan baru
 		&models.Voucher{},
 		&models.Hardware{},
+		&models.Filter{},
 	)
 
 	DB = db
