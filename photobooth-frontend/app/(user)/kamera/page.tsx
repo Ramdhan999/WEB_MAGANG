@@ -390,7 +390,7 @@ function SesiFotoContent() {
   }
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-start pt-6 pb-8 px-4 md:px-8 select-none overflow-x-hidden" style={{ backgroundColor: "#E3D5D5" }}>
+    <main className="relative flex h-screen flex-col items-center justify-start pt-6 pb-8 px-4 md:px-8 select-none overflow-hidden" style={{ backgroundColor: "#E3D5D5" }}>
       {showFlash && <div className="fixed inset-0 bg-white z-[100] animate-pulse"></div>}
 
       <div className="absolute top-0 left-0 w-full h-[12px] z-50 flex">
@@ -398,7 +398,7 @@ function SesiFotoContent() {
         <div className="h-full flex-grow" style={{ background: "linear-gradient(90deg, #151515 0%, #252525 100%)", transform: "matrix(-1, 0, 0, 1, 0, 0)" }}></div>
       </div>
 
-      <div className="w-full max-w-[1828px] flex flex-col items-center z-10 mt-6">
+      <div className="w-full max-w-[1828px] flex-1 flex flex-col items-center z-10 mt-6 min-h-0">
         <div className="w-full h-[74px] bg-white border-[1.5px] border-[#54868A] rounded-[23px] px-8 flex items-center justify-between shadow-sm mb-4">
           <div className="flex items-center gap-4">
             <div className="w-[37px] h-[37px] bg-[#3F9C9B] border-[2px] border-[#235757] rounded-full flex items-center justify-center shadow-inner">
@@ -433,7 +433,7 @@ function SesiFotoContent() {
           <span className="font-hind font-semibold text-[20px] text-[#2E8040] tracking-[-0.08em] text-right leading-none pb-0.5">{fotoDiambil} foto di ambil.</span>
         </div>
 
-        <div className="w-full h-[760px] bg-white border-[1.5px] border-[#54868A] rounded-[23px] p-[17px] flex flex-col shadow-sm relative">
+        <div className="w-full flex-1 min-h-0 bg-white border-[1.5px] border-[#54868A] rounded-[23px] p-[17px] flex flex-col shadow-sm relative">
           <h2 className="font-hind font-semibold text-[24px] text-[#303030] mb-3 ml-2 leading-none">Kamera Utama</h2>
           <div className="w-full flex-grow bg-black border-[1.5px] border-[#54868A] rounded-[23px] relative flex flex-col items-center justify-center overflow-hidden">
             {simMode ? (
@@ -462,7 +462,7 @@ function SesiFotoContent() {
             )}
 
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/55 backdrop-blur-md px-5 py-2 rounded-full border border-white/15 z-20 shadow-lg">
-              <span className="font-inter font-bold text-[15px] text-white">✊ Kepalan tangan untuk ambil foto · ✋ Telapak untuk stop</span>
+              <span className="font-inter font-bold text-[15px] text-white"> ✋ TELAPAK TANGAN UNTUK AMBIL FOTO </span>
             </div>
           </div>
         </div>
