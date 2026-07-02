@@ -791,7 +791,7 @@ function ResultContent() {
                 </div>
                 <div className="flex-1 flex flex-col justify-center pr-8 pt-1">
                   <h3 className="font-inter font-bold text-[26px] text-[#545454] tracking-[-0.05em] leading-tight mb-0.5">Kirim Digital</h3>
-                  <p className="font-hind font-semibold text-[17px] text-[#3E8C7B] tracking-[-0.05em] leading-tight">WhatsApp &amp; QR ke Drive</p>
+                  <p className="font-hind font-semibold text-[17px] text-[#3E8C7B] tracking-[-0.05em] leading-tight">QR ke Drive</p>
                 </div>
                 <span className="absolute right-6 text-[#54868A] opacity-50 text-3xl group-hover:translate-x-2 transition-transform">→</span>
               </button>
@@ -943,7 +943,7 @@ function ResultContent() {
                 </div>
 
                 <div className="flex flex-col gap-5 overflow-y-auto no-scrollbar pr-1 pb-2 flex-1">
-                  <div className="w-full bg-[#FAFAFA] border border-[#E0E0E0] rounded-[20px] p-5">
+                  {/* <div className="w-full bg-[#FAFAFA] border border-[#E0E0E0] rounded-[20px] p-5">
                     <div className="flex items-center gap-3 mb-4">
                       <div className="w-[40px] h-[40px] bg-[#EAF5F3] border border-[#54868A]/30 rounded-full flex items-center justify-center shadow-md">
                         <img src="/wa.png" className="w-[24px] h-[24px] object-contain" alt="wa" />
@@ -964,7 +964,7 @@ function ResultContent() {
                     <div className="h-[1px] bg-[#54868A]/30 flex-1"></div>
                     <span className="font-hind font-bold italic text-[16px] text-[#D29E38]">atau</span>
                     <div className="h-[1px] bg-[#54868A]/30 flex-1"></div>
-                  </div>
+                  </div> */}
 
                   <div className="w-full bg-[#FFF6E5] border border-[#F2E0C4] rounded-[20px] p-5 flex flex-col items-center">
                     <div className="flex items-center gap-3 w-full mb-4">
