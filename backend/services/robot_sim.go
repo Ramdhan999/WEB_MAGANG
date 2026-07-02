@@ -24,7 +24,7 @@ import (
 
 // ── KONFIG ────────────────────────────────────────────────────────────
 // URL robot Flask (lewat ngrok). Samain sama yang di main.go.
-var RobotBaseURL = "https://activism-buggy-crier.ngrok-free.dev"
+var RobotBaseURL = "http://localhost:5001"
 
 // Gesture "telapak / 5 jari" = pemicu suara 2.
 // Dari constants.py robot: gesture_id 5 = "All Fingers".
@@ -221,4 +221,3 @@ func matchesKeyword(name string, keywords []string) bool {
 	}
 	return false
 }
-	

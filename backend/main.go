@@ -206,7 +206,7 @@ func main() {
 	midtrans.ServerKey = os.Getenv("MIDTRANS_SERVER_KEY")
 	midtrans.Environment = midtrans.Sandbox
 
-	robotBaseURL := "https://activism-buggy-crier.ngrok-free.dev"
+	robotBaseURL := "http://localhost:5001"
 
 	// --- ENDPOINT DSLR (Panggil dari services/digicam.go) ---
 
