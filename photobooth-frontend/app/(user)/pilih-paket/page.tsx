@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { usePageSound } from "@/hooks/usePageSound";
 
 interface ApiPackage {
   id: number;
@@ -33,6 +34,9 @@ export default function PilihPaketPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [packages, setPackages] = useState<ApiPackage[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // 🔊 Auto-play suara halaman
+  usePageSound("/fase/pilih_paket.mpeg");
 
   useEffect(() => {
     const fetchPackages = async () => {
@@ -104,7 +108,6 @@ export default function PilihPaketPage() {
             const colors = COLOR_PALETTE[index % COLOR_PALETTE.length];
             const avatarImg = pkg.icon_url || FALLBACK_ICONS[index % FALLBACK_ICONS.length];
             const details = buildDetails(pkg);
-            // Pakai badge buat tag (singkat: "SOLO", "DUO"). Fallback ke name kalo badge kosong.
             const tagLabel = pkg.badge || pkg.name;
 
             return (
@@ -114,7 +117,6 @@ export default function PilihPaketPage() {
                 className={`flex flex-col bg-white rounded-[17px] pt-6 pb-5 px-5 relative cursor-pointer select-none transition-all duration-300 w-[312px] h-[435px] ${isActive ? 'shadow-[6px_9px_20px_rgba(0,0,0,0.35)] scale-[1.02]' : 'shadow-[6px_9px_9.6px_rgba(0,0,0,0.25)] hover:scale-[1.02]'}`}
                 style={{ border: isActive ? '3px solid #398679' : '1.5px solid transparent' }}
               >
-                {/* Ribbon Terpopuler */}
                 {pkg.is_popular && (
                   <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[143px] h-[18px] bg-[#398679] rounded-b-[7px] flex items-center justify-center gap-1 z-30 shadow-sm">
                     <span className="text-yellow-300 text-[9px]">★</span>
@@ -122,22 +124,18 @@ export default function PilihPaketPage() {
                   </div>
                 )}
 
-                {/* Checkmark Bulat Aktif */}
                 <div className={`absolute top-3 right-3 z-30 flex items-center justify-center h-[26px] w-[26px] rounded-full bg-[#3A9F86] shadow-sm transition-all duration-300 ${isActive ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
                 </div>
 
-                {/* Badge Kategori Paket — sekarang pake pkg.badge */}
                 <div className="flex items-center justify-center h-[23px] min-w-[64px] px-3 mx-auto rounded-[23px] border border-[#AC8947] shadow-sm shrink-0 mt-1 mb-3" style={{ backgroundColor: colors.tagBg }}>
                   <span className="font-inter font-bold text-[12px] text-[#27241D] tracking-[-0.05em] text-center uppercase">{tagLabel}</span>
                 </div>
 
-                {/* Avatar Lingkaran */}
                 <div className="w-[55px] h-[55px] rounded-full mx-auto flex items-center justify-center overflow-hidden mb-3 shrink-0 shadow-inner" style={{ background: colors.avatarBg }}>
                   <img src={avatarImg} className="w-[38px] h-[38px] object-contain" alt={pkg.name} />
                 </div>
 
-                {/* Detail Fitur List */}
                 <div className="flex flex-col w-full flex-1 justify-start">
                   {details.map((detail, idx) => (
                     <div key={idx} className="w-full">
@@ -156,7 +154,6 @@ export default function PilihPaketPage() {
                   ))}
                 </div>
 
-                {/* Section Harga & Tombol */}
                 <div className="text-center w-full mt-auto pt-2">
                   <h2 className="font-inter font-bold text-[28px] text-[#17684E] tracking-[-0.09em] leading-none mb-2">
                     {formatRupiah(pkg.price)}

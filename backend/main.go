@@ -3,8 +3,10 @@ package main
 import (
 	"backend-photobooth/controllers"
 	"backend-photobooth/database"
+	"backend-photobooth/models"
 	"backend-photobooth/services"
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"image"
 	"image/draw"
@@ -349,6 +351,107 @@ func main() {
 	r.POST("/api/print/extra", controllers.CreatePrintPayment)
 	r.POST("/api/print/done", controllers.ConfirmPrint)
 	r.POST("/api/digital/done", controllers.ConfirmDigital)
+
+	// =====================================================================
+	// 🎯 GALLERY ROUTES (public — buat QR scan dari HP)
+	// =====================================================================
+
+	// GET /api/gallery/:txn — public gallery view (no auth)
+	r.GET("/api/gallery/:txn", func(c *gin.Context) {
+		txn := c.Param("txn")
+
+		var session models.PhotoSession
+		if err := database.DB.Preload("Photos").
+			Where("transaction_id = ?", txn).
+			First(&session).Error; err != nil {
+			c.JSON(404, gin.H{"error": "Galeri tidak ditemukan"})
+			return
+		}
+
+		// Cek apakah frame editan udah di-upload
+		frameEditedURL := ""
+		framePath := filepath.Join("uploads", "frames", txn+".jpg")
+		if _, err := os.Stat(framePath); err == nil {
+			frameEditedURL = "/uploads/frames/" + txn + ".jpg"
+		}
+
+		photos := []gin.H{}
+		for _, p := range session.Photos {
+			photos = append(photos, gin.H{
+				"id":          p.ID,
+				"photo_path":  p.PhotoPath,
+				"slot_number": p.SlotNumber,
+			})
+		}
+
+		c.JSON(200, gin.H{
+			"transaction_id": session.TransactionID,
+			"template_name":  session.TemplateName,
+			"created_at":     session.CreatedAt,
+			"photos":         photos,
+			"frame_edited":   frameEditedURL,
+		})
+	})
+
+	// POST /api/gallery/save-frame — upload html2canvas output dari client
+	r.POST("/api/gallery/save-frame", func(c *gin.Context) {
+		var req struct {
+			TransactionID string `json:"transaction_id" binding:"required"`
+			ImageBase64   string `json:"image_base64" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Strip "data:image/...,base64" prefix kalo ada
+		raw := req.ImageBase64
+		if idx := strings.Index(raw, ","); idx > -1 {
+			raw = raw[idx+1:]
+		}
+
+		data, err := base64.StdEncoding.DecodeString(raw)
+		if err != nil {
+			c.JSON(400, gin.H{"error": "Invalid base64: " + err.Error()})
+			return
+		}
+
+		// Validasi: ukuran wajar (max 20MB) buat hindari DoS
+		if len(data) > 20*1024*1024 {
+			c.JSON(400, gin.H{"error": "Image terlalu besar (>20MB)"})
+			return
+		}
+
+		framesDir := filepath.Join("uploads", "frames")
+		if err := os.MkdirAll(framesDir, 0755); err != nil {
+			c.JSON(500, gin.H{"error": "Gagal bikin folder: " + err.Error()})
+			return
+		}
+
+		framePath := filepath.Join(framesDir, req.TransactionID+".jpg")
+		if err := os.WriteFile(framePath, data, 0644); err != nil {
+			c.JSON(500, gin.H{"error": "Gagal simpen file: " + err.Error()})
+			return
+		}
+
+		fmt.Printf("📸 [GALLERY] Frame editan tersimpan: %s (%d bytes)\n", framePath, len(data))
+		c.JSON(200, gin.H{
+			"url":  "/uploads/frames/" + req.TransactionID + ".jpg",
+			"size": len(data),
+			"at":   time.Now().Format(time.RFC3339),
+		})
+	})
+
+	// DELETE /api/gallery/:txn — cleanup frame editan (buat cron / privacy)
+	r.DELETE("/api/gallery/:txn", func(c *gin.Context) {
+		txn := c.Param("txn")
+		framePath := filepath.Join("uploads", "frames", txn+".jpg")
+		if err := os.Remove(framePath); err != nil && !os.IsNotExist(err) {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"deleted": true, "txn": txn})
+	})
 
 	go services.StartRobotDetectionPoller() // ⬅️ poller deteksi robot (mode real)
 

@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { usePageSound } from "@/hooks/usePageSound";
 
 const BACKEND_URL = "http://localhost:8080";
 
@@ -14,6 +15,9 @@ function KuponContent() {
   const [error, setError] = useState(false);
   const [errorText, setErrorText] = useState("Kode voucher salah atau sudah kadaluwarsa!");
   const [loading, setLoading] = useState(false);
+
+  usePageSound("/fase/voucher.mp3");
+  usePageSound("/fase/voucher_gaada.mp3", error);
 
   const handleRedeem = async () => {
     const code = voucherCode.trim();

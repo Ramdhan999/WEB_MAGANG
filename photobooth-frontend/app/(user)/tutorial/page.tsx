@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation"; 
+import { useRouter } from "next/navigation";
+import { usePageSound } from "@/hooks/usePageSound"; 
 
 export default function TutorialAlurPage() {
   const router = useRouter(); 
   const [isLoading, setIsLoading] = useState(false); 
+
+   usePageSound("/fase/tutorial_alur.mpeg");
 
   const mainStages = [
     {
@@ -28,7 +31,7 @@ export default function TutorialAlurPage() {
       iconImg: "/step2.png",
       accentBg: "linear-gradient(180deg, #7077C2 0%, #35385C 100%)",
       subSteps: [
-        { label: "Tutorial Robot", desc: "Pelajari gestur tangan" },
+        // { label: "Tutorial Robot", desc: "Pelajari gestur tangan" },
         { label: "Sesi Foto Bebas", desc: "Jepret sepuasnya, retake aman" }
       ]
     },
@@ -58,6 +61,20 @@ export default function TutorialAlurPage() {
     }
   ];
 
+  // LOGIKA BARU: Kita tambahin nomor urut yang beneran ngitung berurutan di sini
+  let globalCounter = 1;
+  const stagesWithNumbers = mainStages.map(stage => {
+    return {
+      ...stage,
+      subSteps: stage.subSteps.map(sub => {
+        return {
+          ...sub,
+          stepNumber: globalCounter++ // Ngitung urut, nggak peduli index stage-nya
+        };
+      })
+    };
+  });
+
   return (
     <main className="relative flex min-h-screen flex-col items-center pt-4 pb-12 px-4 md:px-8 selection:bg-[#75FFC3] selection:text-[#2E4F4D]" style={{ backgroundColor: '#E3D5D5' }}>
       
@@ -82,7 +99,8 @@ export default function TutorialAlurPage() {
 
       {/* GRID KARTU TAHAPAN */}
       <div className="w-full max-w-[1440px] flex flex-wrap justify-center gap-6 mb-10 z-10">
-        {mainStages.map((stage, index) => (
+        {/* LOGIKA BARU: pakai stagesWithNumbers yang udah dikasih stepNumber */}
+        {stagesWithNumbers.map((stage, index) => (
           <div 
             key={index}
             className="flex flex-col bg-[#FDFAF4] border-[1.5px] border-[#E3D5D5] rounded-[21px] p-5 shadow-[5px_8px_29.6px_rgba(0,0,0,0.25)] hover:scale-[1.03] transition-all duration-300 relative overflow-hidden w-[339px] h-[404px]"
@@ -120,8 +138,9 @@ export default function TutorialAlurPage() {
                     className="w-[38px] h-[38px] rounded-full flex items-center justify-center flex-shrink-0 border border-black/10 shadow-sm"
                     style={{ background: stage.accentBg }}
                   >
+                    {/* LOGIKA BARU: Tinggal panggil sub.stepNumber, nggak pake rumus ribet lagi */}
                     <span className="font-inter font-semibold text-[24px] leading-[29px] text-white">
-                      {index * 2 + subIdx + 1}
+                      {sub.stepNumber}
                     </span>
                   </div>
                   <div className="flex flex-col">
@@ -137,7 +156,6 @@ export default function TutorialAlurPage() {
 
       {/* NAVIGATION BUTTONS */}
       <div className="w-full max-w-[1440px] flex flex-col items-center mt-4 z-10 relative">
-        {/* Tombol Lanjut (Gaya Ukuran, Font, dan Border Disamakan 100% Persis dengan Halaman Utama) */}
         <button 
           onClick={() => router.push("/pilih-paket")} 
           className="flex items-center justify-center gap-3 w-full sm:w-[265px] h-[53px] bg-[#3A9F86] border-3 border-[#E3D5D5] rounded-[23px] shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"

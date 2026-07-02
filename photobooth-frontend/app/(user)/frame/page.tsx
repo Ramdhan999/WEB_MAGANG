@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { usePageSound } from "@/hooks/usePageSound";
 
 interface ApiTemplate {
   id: number;
@@ -29,6 +30,7 @@ function FrameContent() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  usePageSound("/fase/frame.mp3");
 
   useEffect(() => {
     const fetchTemplates = async () => {

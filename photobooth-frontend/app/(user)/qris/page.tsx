@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
+import { usePageSound } from "@/hooks/usePageSound";
 
 const BACKEND_URL = "http://localhost:8080";
 
@@ -30,6 +31,7 @@ function QrisContent() {
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const hasTriggeredRef = useRef(false);
+  usePageSound("/fase/qris.mp3");
 
   // TIMER
   useEffect(() => {

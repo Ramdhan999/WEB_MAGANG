@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { usePageSound } from "@/hooks/usePageSound";
 
 const BACKEND_URL = "http://localhost:8080";
 
@@ -11,6 +12,8 @@ function SuccessContent() {
   const txn = searchParams.get("txn") || "";
 
   const [status, setStatus] = useState<"verifying" | "success" | "failed">("verifying");
+
+  usePageSound("/fase/bayar_berhasil.mpeg");
 
   // Verifikasi transaksi ke backend
   useEffect(() => {

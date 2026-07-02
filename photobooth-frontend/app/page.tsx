@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { usePageSound } from "@/hooks/usePageSound";
 
 export default function Home() {
+  usePageSound("/fase/awalan.mp3");
   return (
     <main 
       className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden text-white bg-[#737373]"

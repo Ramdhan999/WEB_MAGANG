@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { usePageSound } from "@/hooks/usePageSound";
 
 function GagalContent() {
   const router = useRouter();
@@ -10,6 +11,8 @@ function GagalContent() {
   
   const reason = searchParams.get("reason") || "error";
   const paketDipilih = searchParams.get("paket") || "premium";
+
+   usePageSound("/fase/bayar_gagal.mpeg");
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center p-4 select-none overflow-hidden" style={{ backgroundColor: '#E3D5D5' }}>
