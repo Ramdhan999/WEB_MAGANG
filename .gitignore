@@ -1,6 +1,8 @@
 # Environment
 .env
 backend/.env
+.env.local
+.env.*.local
 
 # Node
 node_modules/
@@ -14,3 +16,20 @@ build/
 
 # Logs
 *.log
+
+# ===== BACKEND RUNTIME DATA =====
+# Foto session — gak perlu masuk repo, auto-generate saat runtime
+backend/hasil_foto_dslr/
+backend/photos/
+backend/uploads/
+backend/temp/
+
+# ===== EDITOR =====
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
