@@ -462,34 +462,35 @@ function PrintReviewContent() {
         </div>
       </div>
 
-      <div className="w-full max-w-[1400px] px-6 mb-6 z-10">
-        <div className="w-full bg-gradient-to-r from-[#F4E5C2] to-[#FFEFD0] border-[1.5px] border-[#D29E38] rounded-[16px] py-3 px-5 flex items-center gap-4 shadow-sm">
-          <div className="shrink-0 w-[44px] h-[44px] bg-[#D29E38] rounded-full flex items-center justify-center shadow-inner">
-            <span className="text-[22px]">💡</span>
-          </div>
-          <div className="flex-1 flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2 shrink-0">
-              <div className="w-[26px] h-[26px] bg-[#3A9F86] rounded-full flex items-center justify-center text-white font-bold text-[13px] shadow-sm shrink-0">1</div>
-              <span className="font-hind font-semibold text-[14px] text-[#7A5A1F] tracking-[-0.04em] leading-tight">Tap foto buat preview</span>
-            </div>
-            <span className="text-[#D29E38] font-bold hidden md:inline">→</span>
-            <div className="flex items-center gap-2 shrink-0">
-              <div className="w-[26px] h-[26px] bg-[#3A9F86] rounded-full flex items-center justify-center text-white font-bold text-[13px] shadow-sm shrink-0">2</div>
-              <span className="font-hind font-semibold text-[14px] text-[#7A5A1F] tracking-[-0.04em] leading-tight"><strong>Drag &amp; drop</strong> ke slot atau klik <strong>"+ Pilih"</strong></span>
-            </div>
-            <span className="text-[#D29E38] font-bold hidden md:inline">→</span>
-            <div className="flex items-center gap-2 shrink-0">
-              <div className="w-[26px] h-[26px] bg-[#3A9F86] rounded-full flex items-center justify-center text-white font-bold text-[13px] shadow-sm shrink-0">3</div>
-              <span className="font-hind font-semibold text-[14px] text-[#7A5A1F] tracking-[-0.04em] leading-tight">1 foto bisa <strong>banyak slot</strong> 🎉</span>
-            </div>
-            <span className="text-[#D29E38] font-bold hidden md:inline">→</span>
-            <div className="flex items-center gap-2 shrink-0">
-              <div className="w-[26px] h-[26px] bg-[#3A9F86] rounded-full flex items-center justify-center text-white font-bold text-[13px] shadow-sm shrink-0">4</div>
-              <span className="font-hind font-semibold text-[14px] text-[#7A5A1F] tracking-[-0.04em] leading-tight"><strong>Geser & zoom</strong> langsung · <strong>klik foto</strong> buat tombol <strong>✕ hapus</strong></span>
-            </div>
-          </div>
-        </div>
+  <div className="flex justify-center px-6 mb-6 z-10">
+  <div className="inline-flex bg-gradient-to-r from-[#F4E5C2] to-[#FFEFD0] border-[1.5px] border-[#D29E38] rounded-[16px] py-3 px-5 items-center gap-3 shadow-sm">
+    <div className="shrink-0 w-[44px] h-[44px] bg-[#D29E38] rounded-full flex items-center justify-center shadow-inner">
+      <span className="text-[22px]">💡</span>
+    </div>
+    <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="w-[26px] h-[26px] bg-[#3A9F86] rounded-full flex items-center justify-center text-white font-bold text-[13px] shadow-sm shrink-0">1</div>
+        <span className="font-hind font-semibold text-[14px] text-[#7A5A1F] tracking-[-0.04em] leading-tight">Tap foto buat preview</span>
       </div>
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="w-[26px] h-[26px] bg-[#3A9F86] rounded-full flex items-center justify-center text-white font-bold text-[13px] shadow-sm shrink-0">2</div>
+        <span className="font-hind font-semibold text-[14px] text-[#7A5A1F] tracking-[-0.04em] leading-tight"><strong>Drag &amp; drop</strong> atau klik <strong>"+ Pilih"</strong></span>
+      </div>
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="w-[26px] h-[26px] bg-[#3A9F86] rounded-full flex items-center justify-center text-white font-bold text-[13px] shadow-sm shrink-0">3</div>
+        <span className="font-hind font-semibold text-[14px] text-[#7A5A1F] tracking-[-0.04em] leading-tight">1 foto bisa <strong>banyak slot</strong></span>
+      </div>
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="w-[26px] h-[26px] bg-[#3A9F86] rounded-full flex items-center justify-center text-white font-bold text-[13px] shadow-sm shrink-0">4</div>
+        <span className="font-hind font-semibold text-[14px] text-[#7A5A1F] tracking-[-0.04em] leading-tight"><strong>Geser & zoom</strong></span>
+      </div>
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="w-[26px] h-[26px] bg-[#3A9F86] rounded-full flex items-center justify-center text-white font-bold text-[13px] shadow-sm shrink-0">5</div>
+        <span className="font-hind font-semibold text-[14px] text-[#7A5A1F] tracking-[-0.04em] leading-tight"><strong>klik ✕</strong> untuk hapus</span>
+      </div>
+    </div>
+  </div>
+</div>
 
       <div className="w-full max-w-[1400px] flex flex-col lg:flex-row gap-10 items-start justify-center px-6 flex-grow">
 

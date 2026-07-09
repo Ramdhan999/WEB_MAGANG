@@ -56,7 +56,7 @@ export default function TutorialAlurPage() {
       accentBg: "linear-gradient(180deg, #5F89BB 0%, #2B3E55 100%)",
       subSteps: [
         { label: "Cetak 4R Instan", desc: "Print langsung di studio" },
-        { label: "Kirim Digital", desc: "WhatsApp, QR Galeri, atau ZIP" }
+        { label: "Kirim Digital", desc: "QR ke Galeri" }
       ]
     }
   ];

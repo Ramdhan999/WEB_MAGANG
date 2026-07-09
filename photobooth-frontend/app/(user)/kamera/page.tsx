@@ -10,7 +10,7 @@ const DEBUG_STATE = true;
 
 // 🎯 Gesture config
 const START_GESTURE = 5;                                // Telapak (5 jari) → sinyal MULAI
-const PRESET_GESTURES = [1, 2, 3, 4, 6, 7, 8, 9, 10]; // Preset (5 dipisahin karena buat mulai)
+const PRESET_GESTURES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; // Preset (5 juga bisa jadi preset setelah START)
 
 // 🎯 Mapping angka → nama file gambar di /public
 const NUMBER_NAMES: Record<number, string> = {
@@ -20,18 +20,10 @@ const NUMBER_NAMES: Record<number, string> = {
 
 
 // 🎯 CAPTURE AREA GUIDE
-// Aspect ratio SENSOR kamera Canon (default 3:2, sesuai 36×24mm)
-// Ubah ke 4/3 kalo camera Anda 4:3, atau 2/3 kalo portrait mount
-// Rumus: width / height
 const CAPTURE_ASPECT = 3 / 2;
 
-// =====================================================================
-// SUARA YANG DIPAKAI (SIMPEL — CUMA 2):
-//   1. "4" → main pas gesture (yang trigger preset) kedeteksi
-//      → robot mulai gerak. Telapak gak ada suara (gak trigger preset).
-//   2. "tiga/dua/satu" → countdown 3-2-1 SETELAH robot done → jepret.
-// Suara 1, 2, 3, 8 DIBUANG (gak dipake).
-// =====================================================================
+// 🎯 Preview foto config
+const PREVIEW_DURATION_SEC = 3;
 
 interface SessionData {
   id: number;
@@ -50,7 +42,7 @@ function SesiFotoContent() {
   const [sessionError, setSessionError] = useState<string | null>(null);
 
   const [timeLeft, setTimeLeft] = useState(300);
-  const [initialDuration, setInitialDuration] = useState(300); // 🎯 buat progress bar
+  const [initialDuration, setInitialDuration] = useState(300);
   const [fotoDiambil, setFotoDiambil] = useState(0);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isCountingDown, setIsCountingDown] = useState(false);
@@ -59,11 +51,15 @@ function SesiFotoContent() {
   const [isDummyCapturing, setIsDummyCapturing] = useState(false);
   const [simMode, setSimMode] = useState(false);
 
-  // 🎯 Track preset yg lagi aktif (buat highlight card)
   const [activePreset, setActivePreset] = useState<number | null>(null);
   const [startTriggered, setStartTriggered] = useState(false);
 
-  // 🎯 Camera container aspect tracking (buat guide strips)
+  // 🎯 Preview foto setelah jepret
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+  const [previewCountdown, setPreviewCountdown] = useState(PREVIEW_DURATION_SEC);
+  const previewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const previewPhotoRef = useRef<string | null>(null); // Sync ref buat polling check
+
   const cameraContainerRef = useRef<HTMLDivElement>(null);
   const [containerAspect, setContainerAspect] = useState(16 / 9);
 
@@ -99,7 +95,7 @@ function SesiFotoContent() {
     return () => observer.disconnect();
   }, []);
 
-  // ===== PRELOAD AUDIO (cuma 4 file: suara 4 + 3 hitungan) =====
+  // ===== PRELOAD AUDIO =====
   useEffect(() => {
     const files: Record<string, string> = {
       "4": "/sounds/4.mp3",
@@ -120,7 +116,6 @@ function SesiFotoContent() {
     audioRef.current = obj;
   }, []);
 
-  // Single-channel + debounce — anti overlap
   const playSound = (key: string) => {
     const a = audioRef.current[key];
     if (!a) { console.warn("🔇 [SOUND] gak ada audio buat key:", key); return; }
@@ -145,6 +140,32 @@ function SesiFotoContent() {
         .then(() => { if (DEBUG_STATE) console.log("🔊 [SOUND] play:", key); })
         .catch((e) => console.warn("🔇 [SOUND] gagal play:", key, e?.message));
     } catch (e) { console.warn("🔇 [SOUND] error:", key, e); }
+  };
+
+  // 🎯 Show foto preview selama 3 detik
+  const showPreview = (photoUrl: string) => {
+    if (DEBUG_STATE) console.log("🖼️ [PREVIEW] show:", photoUrl);
+    setPreviewPhoto(photoUrl);
+    previewPhotoRef.current = photoUrl;
+    setPreviewCountdown(PREVIEW_DURATION_SEC);
+
+    if (previewTimerRef.current) {
+      clearInterval(previewTimerRef.current);
+    }
+
+    let remaining = PREVIEW_DURATION_SEC;
+    previewTimerRef.current = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        clearInterval(previewTimerRef.current!);
+        previewTimerRef.current = null;
+        setPreviewPhoto(null);
+        previewPhotoRef.current = null;
+        if (DEBUG_STATE) console.log("🖼️ [PREVIEW] hide");
+      } else {
+        setPreviewCountdown(remaining);
+      }
+    }, 1000);
   };
 
   // ===== INIT SESSION =====
@@ -247,11 +268,17 @@ function SesiFotoContent() {
     }
   }, [timeLeft, session, txn, router]);
 
+  // 🎯 Cleanup preview timer pas unmount
+  useEffect(() => {
+    return () => {
+      if (previewTimerRef.current) {
+        clearInterval(previewTimerRef.current);
+      }
+    };
+  }, []);
+
   // =====================================================================
   // POLLING STATE ROBOT
-  // - palm_seq naik → sinyal MULAI ke-trigger (highlight card 5)
-  // - preset_seq naik → SUARA 4 (gesture trigger preset → robot terima)
-  // - done_seq naik   → START COUNTDOWN (hitungan + jepret)
   // =====================================================================
   useEffect(() => {
     if (!isCameraActive) return;
@@ -277,17 +304,16 @@ function SesiFotoContent() {
           if (DEBUG_STATE) console.log("✋ [PALM] MULAI ter-trigger");
         }
 
-        // Suara 4 pas gesture trigger preset
-        if (!isCountingDownRef.current && s.preset_seq > prev.preset) {
+        // Suara 4 pas gesture trigger preset (SKIP kalo lagi preview foto)
+        if (!isCountingDownRef.current && !previewPhotoRef.current && s.preset_seq > prev.preset) {
           playSound("4");
-          // 🎯 Update active preset display (kalo backend kirim value preset)
           if (typeof s.current_preset === 'number') {
             setActivePreset(s.current_preset);
           }
         }
 
-        // Robot DONE → countdown 3-2-1 → jepret
-        if (s.done_seq > prev.done && !isCountingDownRef.current) {
+        // Robot DONE → countdown 3-2-1 → jepret (SKIP kalo lagi preview)
+        if (s.done_seq > prev.done && !isCountingDownRef.current && !previewPhotoRef.current) {
           startSession();
         }
 
@@ -349,13 +375,30 @@ function SesiFotoContent() {
         return;
       }
 
+      // 🎯 Simulasi 3:2 crop kayak Canon DSLR
+      const targetAspect = CAPTURE_ASPECT;
+      const srcW = video.videoWidth;
+      const srcH = video.videoHeight;
+      const srcAspect = srcW / srcH;
+      let sx = 0, sy = 0, sw = srcW, sh = srcH;
+      if (srcAspect > targetAspect) {
+        sw = srcH * targetAspect;
+        sx = (srcW - sw) / 2;
+      } else if (srcAspect < targetAspect) {
+        sh = srcW / targetAspect;
+        sy = (srcH - sh) / 2;
+      }
+
       const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      canvas.width = sw;
+      canvas.height = sh;
       const ctx = canvas.getContext("2d");
       if (!ctx) { await takePhoto(true); return; }
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
       const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+
+      // 🎯 Show preview instant dari dataUrl (webcam mode)
+      showPreview(dataUrl);
 
       const res = await fetch(`${BACKEND_URL}/api/photo-session/${session.id}/capture-upload`, {
         method: "POST",
@@ -397,6 +440,23 @@ function SesiFotoContent() {
       } else {
         console.log(isDummy ? "🧪 DUMMY Jepret!" : "📸 DSLR Jepret!", data);
         if (data.total_photos !== undefined) setFotoDiambil(data.total_photos);
+
+        // 🎯 Show preview foto DSLR/dummy yang barusan diambil
+        // Coba beberapa field response yang mungkin dipakai backend
+        const photoPath = data.photo_url
+          || data.photo_path
+          || data.photo?.photo_path
+          || data.photo?.photo_url
+          || (data.session?.photos && data.session.photos.length > 0
+            ? data.session.photos[data.session.photos.length - 1].photo_path
+            : null);
+
+        if (photoPath) {
+          const fullUrl = photoPath.startsWith("http") ? photoPath : `${BACKEND_URL}${photoPath}`;
+          showPreview(fullUrl);
+        } else {
+          if (DEBUG_STATE) console.warn("🖼️ [PREVIEW] photo path gak ketemu di response:", data);
+        }
       }
     } catch (err) {
       console.error("Capture error:", err);
@@ -427,7 +487,6 @@ function SesiFotoContent() {
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  // 🎯 Gesture card component (pake image dari /public/{nama_indonesia}.png)
   const GestureCard = ({ n, isStart, isActive }: { n: number; isStart?: boolean; isActive?: boolean }) => {
     const [imgFailed, setImgFailed] = useState(false);
     const imgName = NUMBER_NAMES[n];
@@ -453,7 +512,6 @@ function SesiFotoContent() {
             draggable={false}
           />
         ) : (
-          // Fallback kalo image gagal load → tampilin angka
           <span
             className="font-inter font-black text-white tracking-tight"
             style={{ fontSize: '40px', textShadow: '0 2px 4px rgba(0,0,0,0.35)' }}
@@ -489,15 +547,12 @@ function SesiFotoContent() {
     <main className="h-screen flex flex-col select-none overflow-hidden" style={{ backgroundColor: "#E3D5D5" }}>
       {showFlash && <div className="fixed inset-0 bg-white z-[100] animate-pulse" />}
 
-      {/* 1. TOP GRADIENT BAR (12px, in-flow) */}
       <div className="w-full h-[12px] shrink-0 flex z-40">
         <div className="h-full w-[65%]" style={{ background: "linear-gradient(270deg, #00FFA2 0%, #467664 99.09%)" }}></div>
         <div className="h-full flex-grow" style={{ background: "linear-gradient(90deg, #151515 0%, #252525 100%)", transform: "matrix(-1, 0, 0, 1, 0, 0)" }}></div>
       </div>
 
-      {/* 2. HEADER */}
       <header className="w-full h-[80px] bg-white border-b-[1.5px] border-[#54868A] flex items-center justify-between px-8 shrink-0">
-        {/* Left: timer */}
         <div className="flex items-center gap-4">
           <div className="w-[44px] h-[44px] bg-[#3F9C9B] border-[2px] border-[#235757] rounded-full flex items-center justify-center shadow-inner shrink-0">
             <img src="/icon1.png" alt="timer icon" className="w-[22px] h-[22px] object-contain" />
@@ -510,7 +565,6 @@ function SesiFotoContent() {
           </div>
         </div>
 
-        {/* Right: sim + robot + progress */}
         <div className="flex items-center gap-4">
           {simMode && (
             <div className="px-4 h-[36px] bg-[#FFF1C2] border border-[#D29E38] rounded-[28px] flex items-center gap-2 shadow-inner">
@@ -538,24 +592,20 @@ function SesiFotoContent() {
         </div>
       </header>
 
-      {/* 3. CAMERA AREA — EDGE-TO-EDGE, DARK GRADIENT */}
       <div ref={cameraContainerRef} className="flex-1 relative overflow-hidden" style={{ background: 'linear-gradient(180deg, #232323 0%, #344A41 100%)' }}>
 
-        {/* Panduan pill (atas tengah) */}
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 max-w-[900px] h-[46px] bg-white border-[1.5px] border-[#54868A] rounded-[39px] flex items-center justify-center px-6 shadow-md">
           <span className="font-hind font-semibold text-[18px] text-[#303030] text-center tracking-tight">
             Jaga Jarak aman dari pergerakan lengan robot. Panduan lengkap ada di layar eksternal.
           </span>
         </div>
 
-        {/* Foto count badge (atas kanan) */}
         <div className="absolute top-4 right-4 z-20 bg-white/95 border-[1.5px] border-[#54868A] px-4 py-1.5 rounded-full shadow-md">
           <span className="font-hind font-semibold text-[18px] text-[#2E8040] tracking-[-0.05em]">
             📸 {fotoDiambil} foto diambil
           </span>
         </div>
 
-        {/* Camera stream — FILL width & height */}
         {simMode ? (
           <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
         ) : (
@@ -568,12 +618,11 @@ function SesiFotoContent() {
           />
         )}
 
-        {/* 🎯 CAPTURE AREA GUIDE — blur strips kiri-kanan (yang bakal ke-crop) */}
         {(() => {
           const sideStripPercent = containerAspect > CAPTURE_ASPECT
             ? ((1 - CAPTURE_ASPECT / containerAspect) / 2) * 100
             : 0;
-          if (sideStripPercent < 0.5) return null; // skip kalo strip terlalu tipis (aspect udah pas)
+          if (sideStripPercent < 0.5) return null;
 
           const stripStyle: React.CSSProperties = {
             width: `${sideStripPercent}%`,
@@ -583,45 +632,30 @@ function SesiFotoContent() {
           };
           return (
             <>
-              {/* Strip KIRI (ke-crop) */}
               <div
                 className="absolute top-0 left-0 h-full pointer-events-none z-[5]"
                 style={{ ...stripStyle, borderRight: '2px solid rgba(255, 255, 255, 0.7)', boxShadow: 'inset -4px 0 8px rgba(0,0,0,0.35)' }}
               >
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 opacity-70">
-                  {/* <span className="text-white text-[18px]">✂</span>
-                  <span className="font-hind font-bold text-white text-[9px] tracking-widest whitespace-nowrap" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)' }}>
-                    KE-CROP
-                  </span> */}
                 </div>
               </div>
 
-              {/* Strip KANAN (ke-crop) */}
               <div
                 className="absolute top-0 right-0 h-full pointer-events-none z-[5]"
                 style={{ ...stripStyle, borderLeft: '2px solid rgba(255, 255, 255, 0.7)', boxShadow: 'inset 4px 0 8px rgba(0,0,0,0.35)' }}
               >
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 opacity-70">
-                  {/* <span className="text-white text-[18px]">✂</span>
-                  <span className="font-hind font-bold text-white text-[9px] tracking-widest whitespace-nowrap" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
-                    KE-CROP
-                  </span> */}
                 </div>
               </div>
 
-              {/* Label bawah — info aspect */}
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[6] pointer-events-none">
                 <div className="bg-black/60 backdrop-blur-sm border border-white/20 rounded-full px-3 py-1 shadow-md">
-                  {/* <span className="font-hind font-semibold text-white text-[11px] tracking-wider">
-                    📷 Area foto (rasio {CAPTURE_ASPECT === 1.5 ? '3:2' : CAPTURE_ASPECT === (4/3) ? '4:3' : CAPTURE_ASPECT === (2/3) ? '2:3' : CAPTURE_ASPECT.toFixed(2)}) — merapat ke tengah biar semua kefoto
-                  </span> */}
                 </div>
               </div>
             </>
           );
         })()}
 
-        {/* Loading state */}
         {!isCameraActive && (
           <div className="absolute inset-0 flex flex-col items-center justify-center animate-pulse z-10">
             <span className="text-[80px] mb-3">📸</span>
@@ -629,18 +663,55 @@ function SesiFotoContent() {
           </div>
         )}
 
-        {/* Countdown overlay */}
         {isCountingDown && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-30">
             <span className="text-[240px] font-black text-white drop-shadow-2xl animate-ping-once">{countdownNumber}</span>
           </div>
         )}
+
+        {/* 🎯 Preview foto setelah jepret — cuma area tengah (sesuai garis capture), no blur strips */}
+        {previewPhoto && (() => {
+          const sideStripPercent = containerAspect > CAPTURE_ASPECT
+            ? ((1 - CAPTURE_ASPECT / containerAspect) / 2) * 100
+            : 0;
+          const centerWidthPercent = 100 - (sideStripPercent * 2);
+
+          return (
+            <div className="absolute inset-0 z-[95] animate-fade-in" style={{ background: 'linear-gradient(180deg, #232323 0%, #344A41 100%)' }}>
+              {/* Foto preview — tampil cuma di area tengah (match area capture) */}
+              <div
+                className="absolute top-0 h-full"
+                style={{
+                  left: `${sideStripPercent}%`,
+                  width: `${centerWidthPercent}%`,
+                }}
+              >
+                <img
+                  src={previewPhoto}
+                  alt="Hasil foto"
+                  className="w-full h-full object-cover"
+                />
+                {/* Garis putih pembatas kiri-kanan (matching guide live view) */}
+                {sideStripPercent >= 0.5 && (
+                  <>
+                    <div
+                      className="absolute top-0 left-0 h-full"
+                      style={{ width: '2px', backgroundColor: 'rgba(255, 255, 255, 0.7)' }}
+                    />
+                    <div
+                      className="absolute top-0 right-0 h-full"
+                      style={{ width: '2px', backgroundColor: 'rgba(255, 255, 255, 0.7)' }}
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
-      {/* 4. GESTURE STRIP — MULAI (5) | PRESET (1-4, 6-10) */}
       <div className="w-full h-[150px] bg-white border-t-[1.5px] border-[#54868A] flex items-stretch gap-5 px-8 py-3 shrink-0">
 
-        {/* --- MULAI GROUP (gesture 5) --- */}
         <div className="flex flex-col items-center justify-center gap-2 shrink-0">
           <span className="font-hind font-bold text-[12px] text-[#3A9F86] tracking-[0.15em] uppercase">
             ① Mulai dulu
@@ -648,14 +719,12 @@ function SesiFotoContent() {
           <GestureCard n={5} isStart />
         </div>
 
-        {/* --- SEPARATOR (arrow) --- */}
         <div className="flex flex-col items-center justify-center gap-1 shrink-0">
           <div className="w-[2px] h-[30px] bg-gradient-to-b from-transparent to-[#CCCCCC]"></div>
           <div className="text-[22px] text-[#B5B5B5] font-bold leading-none">→</div>
           <div className="w-[2px] h-[30px] bg-gradient-to-t from-transparent to-[#CCCCCC]"></div>
         </div>
 
-        {/* --- PRESET GROUP (gesture 1,2,3,4,6,7,8,9,10) --- */}
         <div className="flex-1 flex flex-col items-center justify-center gap-2">
           <span className="font-hind font-bold text-[12px] text-[#2B6E6A] tracking-[0.15em] uppercase">
             ② Lalu pilih preset 1-10
@@ -673,7 +742,7 @@ function SesiFotoContent() {
         .font-hind { font-family: 'Hind Vadodara', sans-serif; }
         .font-inter { font-family: 'Inter', sans-serif; }
         @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-        .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
+        .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
         @keyframes ping-once { 0% { transform: scale(1); opacity: 0; } 50% { opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
         .animate-ping-once { animation: ping-once 1s ease-out infinite; }
         @keyframes pulse-scale {

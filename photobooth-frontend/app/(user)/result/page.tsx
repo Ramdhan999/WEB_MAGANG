@@ -122,27 +122,77 @@ function ResultContent() {
 
   const printRef = useRef<HTMLDivElement>(null);
 
-   const playEventSound = (path: string) => {
+   // 🔊 Single-channel audio manager (prevent overlap)
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const lastPlayedRef = useRef<{ path: string; time: number }>({ path: "", time: 0 });
+  const thanksPlayedRef = useRef(false); // 🎯 Track terimakasih.mp3 udah play atau belum
+
+  const playEventSound = (path: string, options?: { debounceMs?: number; force?: boolean }) => {
+    const debounceMs = options?.debounceMs ?? 500;
+    const force = options?.force ?? false;
+
+    // Debounce: skip kalo sound sama di-trigger dalam window pendek
+    const now = Date.now();
+    const last = lastPlayedRef.current;
+    if (!force && last.path === path && now - last.time < debounceMs) {
+      console.log(`🔇 [SOUND] skip duplicate: ${path}`);
+      return;
+    }
+    lastPlayedRef.current = { path, time: now };
+
+    // Stop audio yang lagi jalan (kalo ada) sebelum play baru
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+      } catch (e) { }
+    }
+
     try {
       const audio = new Audio(path);
-      audio.play().catch((err) => {
-        console.warn(`🔇 [SOUND] ${path} gagal play:`, err?.message);
+      currentAudioRef.current = audio;
+
+      // Clear ref pas audio kelar natural
+      audio.addEventListener("ended", () => {
+        if (currentAudioRef.current === audio) {
+          currentAudioRef.current = null;
+        }
       });
+
+      audio.play()
+        .then(() => console.log(`🔊 [SOUND] playing: ${path}`))
+        .catch((err) => {
+          console.warn(`🔇 [SOUND] ${path} gagal play:`, err?.message);
+        });
     } catch (e) {
       console.warn(`🔇 [SOUND] error:`, e);
     }
   };
 
+  // 🔊 Play terimakasih HANYA sekali per session (prevent duplicate)
+  const playThanksOnce = () => {
+    if (thanksPlayedRef.current) {
+      console.log(`🔇 [SOUND] terimakasih udah pernah play, skip`);
+      return;
+    }
+    thanksPlayedRef.current = true;
+    playEventSound("/fase/terimakasih.mp3");
+  };
+
   // 🎯 TIMER COUNTDOWN
   useEffect(() => {
-    if (timeLeft <= 0) {
+   if (timeLeft <= 0) {
       if (printStatus === 'rendering' || printStatus === 'printing' || isPaying || isZipping) {
         return;
       }
       sessionStorage.clear();
-      router.push("/");
+      window.location.href = "/";
       return;
     }
+    if (timeLeft === 15) {
+      playThanksOnce();
+    }
+
     const t = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
     return () => clearInterval(t);
   }, [timeLeft, router, printStatus, isPaying, isZipping]);
@@ -153,6 +203,10 @@ function ResultContent() {
       playEventSound("/fase/print d.mp3");
     } else if (printStatus === 'done') {
       playEventSound("/fase/berhasil.mp3");
+
+      setTimeout(() => {
+        playThanksOnce();
+      }, 3500);
     }
   }, [printStatus]);
 
@@ -454,6 +508,7 @@ function ResultContent() {
 
   const handleOpenDigital = async () => {
     setActiveModal('digital');
+
     // 🎯 Fire & forget — upload frame editan ke backend buat galeri
     uploadFrameToBackend();
     try {
@@ -791,7 +846,7 @@ function ResultContent() {
                 </div>
                 <div className="flex-1 flex flex-col justify-center pr-8 pt-1">
                   <h3 className="font-inter font-bold text-[26px] text-[#545454] tracking-[-0.05em] leading-tight mb-0.5">Kirim Digital</h3>
-                  <p className="font-hind font-semibold text-[17px] text-[#3E8C7B] tracking-[-0.05em] leading-tight">QR ke Drive</p>
+                  <p className="font-hind font-semibold text-[17px] text-[#3E8C7B] tracking-[-0.05em] leading-tight">QR Ke Web Galeri</p>
                 </div>
                 <span className="absolute right-6 text-[#54868A] opacity-50 text-3xl group-hover:translate-x-2 transition-transform">→</span>
               </button>
@@ -943,28 +998,6 @@ function ResultContent() {
                 </div>
 
                 <div className="flex flex-col gap-5 overflow-y-auto no-scrollbar pr-1 pb-2 flex-1">
-                  {/* <div className="w-full bg-[#FAFAFA] border border-[#E0E0E0] rounded-[20px] p-5">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-[40px] h-[40px] bg-[#EAF5F3] border border-[#54868A]/30 rounded-full flex items-center justify-center shadow-md">
-                        <img src="/wa.png" className="w-[24px] h-[24px] object-contain" alt="wa" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="font-inter font-bold text-[16px] text-[#332C2C] leading-tight">Kirim ke WhatsApp</span>
-                        <span className="font-hind font-semibold text-[13px] text-[#3A9F86] leading-tight">Aktif setelah booth online (hosting)</span>
-                      </div>
-                    </div>
-                    <input type="tel" placeholder="+62 8xx-xxxx-xxxx" className="w-full h-[45px] rounded-[10px] border border-[#54868A] bg-white px-4 font-inter text-[15px] outline-none focus:border-[#2E706D] mb-4 text-[#332C2C]" />
-                    <button onClick={() => alert('Fitur WhatsApp aktif nanti pas booth udah di-hosting bro 🙏')} className="w-full h-[45px] bg-[#3A9F86] hover:bg-[#2E706D] rounded-[10px] flex items-center justify-center gap-2 transition-colors active:scale-[0.98] shadow-sm border border-[#54868A]">
-                      <img src="/wa.png" className="w-[18px] h-[18px] filter brightness-0 invert" alt="wa-icon" />
-                      <span className="font-inter font-bold italic text-[16px] text-white pt-0.5">Kirim ke WhatsApp</span>
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-4 w-full px-2">
-                    <div className="h-[1px] bg-[#54868A]/30 flex-1"></div>
-                    <span className="font-hind font-bold italic text-[16px] text-[#D29E38]">atau</span>
-                    <div className="h-[1px] bg-[#54868A]/30 flex-1"></div>
-                  </div> */}
 
                   <div className="w-full bg-[#FFF6E5] border border-[#F2E0C4] rounded-[20px] p-5 flex flex-col items-center">
                     <div className="flex items-center gap-3 w-full mb-4">
@@ -1058,7 +1091,9 @@ function ResultContent() {
                 </div>
 
                 <div className="mt-4 shrink-0 w-full pt-4 border-t border-[#54868A]/30">
-                  <button onClick={() => setActiveModal(null)} className="w-full h-[53px] bg-white border border-[#54868A] hover:bg-red-50 rounded-[23px] flex items-center justify-center active:scale-[0.98] transition-colors">
+                  <button onClick={() => {
+                    playEventSound("/fase/terimakasih.mp3");
+                    setActiveModal(null)} } className="w-full h-[53px] bg-white border border-[#54868A] hover:bg-red-50 rounded-[23px] flex items-center justify-center active:scale-[0.98] transition-colors">
                     <span className="font-inter font-bold italic text-[20px] text-[#545454] pt-0.5">Tutup</span>
                   </button>
                 </div>

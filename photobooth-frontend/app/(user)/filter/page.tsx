@@ -99,6 +99,13 @@ function FilterStickerContent() {
   const slotElsRef = useRef<Record<number, HTMLDivElement>>({});
   usePageSound("/fase/filter.mpeg");
 
+  // 🎯 Drag & drop sticker dari grid ke frame
+  const [draggingEmoji, setDraggingEmoji] = useState<string | null>(null);
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const dragLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const dragActiveRef = useRef<boolean>(false);
+
   const panStateRef = useRef<{
     slotId: number;
     startX: number; startY: number;
@@ -276,6 +283,8 @@ function FilterStickerContent() {
   // Pan/zoom handlers
   const handleSlotMouseDown = (e: React.MouseEvent, slot: SlotState) => {
     if (!slot.photo || !slot.imgW || !slot.imgH) return;
+    // 🎯 Kalo lagi drag sticker dari grid, skip pan
+    if (dragActiveRef.current) return;
     e.preventDefault();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     panStateRef.current = {
@@ -301,6 +310,8 @@ function FilterStickerContent() {
 
   const handleSlotTouchStart = (e: React.TouchEvent, slot: SlotState) => {
     if (!slot.photo || !slot.imgW || !slot.imgH) return;
+    // 🎯 Kalo lagi drag sticker dari grid, skip pan
+    if (dragActiveRef.current) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     if (e.touches.length === 2) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -388,6 +399,131 @@ function FilterStickerContent() {
 
   const handleFilterSelect = (name: string) => { setSelectedFilter(name.toUpperCase()); setIsBefore(false); };
   const handleIntensityChange = (val: number) => { setFilterIntensity(val); setIsBefore(false); };
+
+  // 🎯 Drag from grid → drop di frame
+  const LONG_PRESS_MS = 300;
+  const DRAG_MOVE_THRESHOLD = 5;
+
+  const startStickerDrag = (
+    e: React.MouseEvent | React.TouchEvent,
+    emoji: string
+  ) => {
+    const isTouch = 'touches' in e;
+    const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+    const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+
+    dragStartPosRef.current = { x: clientX, y: clientY };
+    dragActiveRef.current = false;
+
+    // Long press timer — activate drag mode kalo hold 300ms
+    dragLongPressRef.current = setTimeout(() => {
+      if (dragStartPosRef.current) {
+        setDraggingEmoji(emoji);
+        setDragPos({ x: dragStartPosRef.current.x, y: dragStartPosRef.current.y });
+        dragActiveRef.current = true;
+      }
+    }, LONG_PRESS_MS);
+  };
+
+  const cancelStickerDrag = useCallback(() => {
+    if (dragLongPressRef.current) {
+      clearTimeout(dragLongPressRef.current);
+      dragLongPressRef.current = null;
+    }
+    dragStartPosRef.current = null;
+    dragActiveRef.current = false;
+    setDraggingEmoji(null);
+    setDragPos(null);
+  }, []);
+
+  const onStickerGridDragMove = useCallback((e: MouseEvent | TouchEvent) => {
+    const isTouch = 'touches' in e;
+    if (isTouch && (e as TouchEvent).touches.length === 0) return;
+    const clientX = isTouch ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
+    const clientY = isTouch ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
+
+    // Kalo drag belum active (belum lewat long press), cek kalo user geser jauh → cancel drag intent
+    if (!dragActiveRef.current && dragStartPosRef.current) {
+      const dx = Math.abs(clientX - dragStartPosRef.current.x);
+      const dy = Math.abs(clientY - dragStartPosRef.current.y);
+      if (dx > DRAG_MOVE_THRESHOLD || dy > DRAG_MOVE_THRESHOLD) {
+        cancelStickerDrag();
+      }
+      return;
+    }
+
+    // Drag active → update posisi ghost + prevent default (biar gak scroll)
+    if (dragActiveRef.current) {
+      if (isTouch) e.preventDefault();
+      setDragPos({ x: clientX, y: clientY });
+    }
+  }, [cancelStickerDrag]);
+
+  const onStickerGridDragEnd = useCallback((e: MouseEvent | TouchEvent) => {
+    // Kalo drag gak active → tap fallback, biarin onClick fire, cukup cleanup
+    if (!dragActiveRef.current) {
+      if (dragLongPressRef.current) {
+        clearTimeout(dragLongPressRef.current);
+        dragLongPressRef.current = null;
+      }
+      dragStartPosRef.current = null;
+      return;
+    }
+
+    // Drag active → cek drop position
+    let clientX: number, clientY: number;
+    if ('changedTouches' in e && (e as TouchEvent).changedTouches.length > 0) {
+      clientX = (e as TouchEvent).changedTouches[0].clientX;
+      clientY = (e as TouchEvent).changedTouches[0].clientY;
+    } else if ('clientX' in e) {
+      clientX = (e as MouseEvent).clientX;
+      clientY = (e as MouseEvent).clientY;
+    } else {
+      cancelStickerDrag();
+      return;
+    }
+
+    // Cek apakah drop di dalam frame preview
+    if (frameRef.current && draggingEmoji) {
+      const rect = frameRef.current.getBoundingClientRect();
+      const inside =
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom;
+
+      if (inside) {
+        // Convert ke persentase relatif ke frame
+        const xPct = ((clientX - rect.left) / rect.width) * 100;
+        const yPct = ((clientY - rect.top) / rect.height) * 100;
+
+        setIsBefore(false);
+        setPlacedStickers(prev => [
+          ...prev,
+          { id: Date.now(), x: xPct, y: yPct, size: 60, rotation: 0, emoji: draggingEmoji }
+        ]);
+      }
+    }
+
+    cancelStickerDrag();
+  }, [draggingEmoji, cancelStickerDrag]);
+
+  // Global listeners untuk drag sticker dari grid
+  useEffect(() => {
+    window.addEventListener("mousemove", onStickerGridDragMove);
+    window.addEventListener("mouseup", onStickerGridDragEnd);
+    window.addEventListener("touchmove", onStickerGridDragMove, { passive: false });
+    window.addEventListener("touchend", onStickerGridDragEnd);
+    window.addEventListener("touchcancel", cancelStickerDrag);
+    return () => {
+      window.removeEventListener("mousemove", onStickerGridDragMove);
+      window.removeEventListener("mouseup", onStickerGridDragEnd);
+      window.removeEventListener("touchmove", onStickerGridDragMove);
+      window.removeEventListener("touchend", onStickerGridDragEnd);
+      window.removeEventListener("touchcancel", cancelStickerDrag);
+    };
+  }, [onStickerGridDragMove, onStickerGridDragEnd, cancelStickerDrag]);
+
   const addSticker = (emoji: string) => {
     setIsBefore(false);
     setPlacedStickers(prev => [...prev, { id: Date.now(), x: 50, y: 50, size: 60, rotation: 0, emoji }]);
@@ -481,6 +617,9 @@ function FilterStickerContent() {
   let dispH = MAX_W / frameAspect;
   if (dispH > MAX_H) { dispH = MAX_H; dispW = MAX_H * frameAspect; }
 
+  // 🎯 Frame rect untuk drop zone highlight (dihitung real-time)
+  const frameRect = frameRef.current?.getBoundingClientRect();
+
   return (
     <main className="relative flex h-screen flex-col items-center pt-4 overflow-hidden select-none" style={{ backgroundColor: '#E3D5D5' }}>
 
@@ -519,7 +658,7 @@ function FilterStickerContent() {
           </div>
 
           <p className="font-hind font-medium text-[12px] text-[#5A7470] tracking-[-0.04em] leading-tight italic mb-2 text-center px-4">
-            ✥ Geser foto untuk atur posisi · scroll/cubit 2 jari untuk zoom
+            ✥ Geser foto untuk atur posisi · tahan stiker, lalu drag ke sini
           </p>
 
           <div className="relative shrink-0">
@@ -661,7 +800,9 @@ function FilterStickerContent() {
             <div className="w-full h-[351px] flex-shrink-0 bg-white border-[1.5px] border-[#54868A] rounded-[17px] p-6 flex flex-col shadow-sm">
               <div className="flex justify-between items-center px-2 mb-4">
                 <h2 className="font-inter font-bold text-[25px] tracking-[-0.05em] text-[#434343] leading-none uppercase">STIKER</h2>
-                <span className="font-hind font-semibold text-[18px] tracking-[-0.08em] text-[#3E8C7B]">{placedStickers.length} stiker terpasang.</span>
+                <span className="font-hind font-semibold text-[18px] tracking-[-0.08em] text-[#3E8C7B]">
+                  {placedStickers.length} terpasang · {draggingEmoji ? "🎯 lepas di frame" : "Tap stiker atau tahan lalu drag ke frame"}
+                </span>
               </div>
               <div className="flex gap-4 px-2 mb-4">
                 {stickerCategories.map(cat => {
@@ -676,7 +817,16 @@ function FilterStickerContent() {
               <div className="flex flex-1 overflow-hidden px-2 gap-4">
                 <div ref={scrollRef} onScroll={() => setScrollProgress(scrollRef.current ? scrollRef.current.scrollTop / (scrollRef.current.scrollHeight - scrollRef.current.clientHeight) : 0)} className="flex-1 grid grid-cols-5 gap-4 overflow-y-auto no-scrollbar content-start pb-2">
                   {stickersMap[stickerCategory].map((s, i) => (
-                    <button key={i} onClick={() => addSticker(s)} className="w-[120px] h-[120px] bg-white border-[1.5px] border-[#54868A] rounded-[20px] text-5xl hover:scale-105 active:scale-95 transition-all shadow-sm flex items-center justify-center">{s}</button>
+                    <button
+                      key={i}
+                      onClick={() => addSticker(s)}
+                      onMouseDown={(e) => startStickerDrag(e, s)}
+                      onTouchStart={(e) => startStickerDrag(e, s)}
+                      className="w-[120px] h-[120px] bg-white border-[1.5px] border-[#54868A] rounded-[20px] text-5xl hover:scale-105 active:scale-95 transition-all shadow-sm flex items-center justify-center"
+                      style={{ touchAction: 'none' }}
+                    >
+                      {s}
+                    </button>
                   ))}
                 </div>
                 <div className="w-[14px] h-full bg-[#7A7A7A] rounded-[69px] relative flex justify-center py-1 flex-shrink-0">
@@ -737,6 +887,44 @@ function FilterStickerContent() {
           </div>
         </button>
       </div>
+
+      {/* 🎯 Ghost sticker follow cursor pas drag */}
+      {draggingEmoji && dragPos && (
+        <div
+          className="fixed pointer-events-none z-[9999] flex items-center justify-center"
+          style={{
+            left: `${dragPos.x}px`,
+            top: `${dragPos.y}px`,
+            width: '60px',
+            height: '60px',
+            transform: 'translate(-50%, -50%)',
+            opacity: 0.6,
+          }}
+        >
+          {draggingEmoji.length > 2 ? (
+            <span style={{ fontSize: '24px', fontWeight: 'bold', color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
+              {draggingEmoji}
+            </span>
+          ) : (
+            <span style={{ fontSize: '48px' }}>{draggingEmoji}</span>
+          )}
+        </div>
+      )}
+
+      {/* Highlight frame drop zone pas drag */}
+      {draggingEmoji && frameRect && (
+        <div className="fixed inset-0 pointer-events-none z-[9998]">
+          <div
+            className="absolute border-4 border-dashed border-[#00FFA2] rounded-[11px] animate-pulse"
+            style={{
+              left: `${frameRect.left}px`,
+              top: `${frameRect.top}px`,
+              width: `${frameRect.width}px`,
+              height: `${frameRect.height}px`,
+            }}
+          />
+        </div>
+      )}
 
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Hind+Vadodara:wght@400;600;700&family=Inter:ital,wght@0,500;0,700;1,700&display=swap');
