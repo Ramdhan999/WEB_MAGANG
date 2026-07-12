@@ -43,25 +43,26 @@ function SuccessContent() {
 
   // =====================================================================
   // 🚀 Setelah verifikasi success + animasi roket selesai:
-  //    1. Enable robot via /api/robot/enable
-  //    2. Push ke /kamera (skip /tutorial-kontrol)
-  // (Pake 1 monitor doang, gak ada window.open)
+  //    Langsung navigate ke /tutorial-kontrol
+  //    Robot enable dipindah ke page lain (nanti ditentukan)
   // =====================================================================
-  useEffect(() => {
-    if (status !== "success") return;
-    const timer = setTimeout(async () => {
-      // 1. Nyalain robot dulu
-      try {
-        await fetch(`${BACKEND_URL}/api/robot/enable`, { method: "POST" });
-      } catch (err) {
-        console.warn("Gagal enable robot:", err);
-      }
-      // 2. Lompat ke kamera
-      router.push(`/kamera?txn=${txn}`);
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, [status, txn, router]);
-
+useEffect(() => {
+  if (status !== "success") return;
+  const timer = setTimeout(async () => {
+    // 🎯 Create session di backend biar duration available di /instruksi
+    try {
+      await fetch(`${BACKEND_URL}/api/photo-session/upsert`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transaction_id: txn, frame_id: "", template_name: "" })
+      });
+    } catch (err) {
+      console.warn("Gagal create session (lanjut aja):", err);
+    }
+    router.push(`/tutorial-kontrol?txn=${txn}`);
+  }, 2500);
+  return () => clearTimeout(timer);
+}, [status, txn, router]);
   // FAILED STATE
   if (status === "failed") {
     return (

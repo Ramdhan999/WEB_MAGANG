@@ -173,9 +173,11 @@ export default function TutorialAlurPage() {
         <div className="w-full flex justify-start px-4 md:px-0 mt-16">
           <button 
             onClick={() => router.push("/")} 
-            className="font-inter font-medium italic text-[24px] tracking-[-0.06em] text-[#0E1E1A] hover:opacity-70 transition-opacity"
+            className="flex items-center gap-2 px-8 h-[53px] bg-white border-[1.5px] border-[#54868A] rounded-full shadow-md hover:scale-105 active:scale-95 transition-all"
           >
-            ← KEMBALI
+            <span className="font-inter font-bold italic text-[20px] tracking-[-0.06em] text-[#0E1E1A]">
+              ← KEMBALI
+            </span>
           </button>
         </div>
       </div>

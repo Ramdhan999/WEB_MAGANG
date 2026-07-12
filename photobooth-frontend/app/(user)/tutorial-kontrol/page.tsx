@@ -1,17 +1,14 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { usePageSound } from "@/hooks/usePageSound";
 
 const BACKEND_URL = "http://localhost:8080";
 
-// ============================================================
-// 🖼️ SmartImg — gambar yang auto-retry kalau gagal load.
-// Berguna khusus di popup MONITOR 2: kadang <img> gagal load
-// pas window lagi pindah/resize ke layar kedua, dan gak retry sendiri.
-// Komponen ini coba load ulang beberapa kali, dan kalau tetep gagal
-// baru nampilin fallback (emoji).
-// ============================================================
+// 🎯 Timer config
+const TUTORIAL_DURATION_SEC = 120; // 2 menit
+
 function SmartImg({
   src, alt, className, fallback,
 }: { src: string; alt: string; className?: string; fallback?: string }) {
@@ -19,7 +16,6 @@ function SmartImg({
   const [failed, setFailed] = useState(false);
   const MAX_RETRY = 4;
 
-  // Cache-buster biar browser bener-bener fetch ulang pas retry
   const realSrc = tries === 0 ? src : `${src}?r=${tries}`;
 
   if (failed && fallback) {
@@ -33,7 +29,6 @@ function SmartImg({
       className={className}
       onError={() => {
         if (tries < MAX_RETRY) {
-          // Retry: delay naik tiap percobaan (200ms, 400ms, 600ms...)
           setTimeout(() => setTries((t) => t + 1), 200 * (tries + 1));
         } else {
           setFailed(true);
@@ -43,150 +38,87 @@ function SmartImg({
   );
 }
 
-// ============================================================
-// 🖥️ KONFIG MONITOR 2 (UBAH PAS ONSITE)
-// ------------------------------------------------------------
-// MONITOR_2_OFFSET_X = lebar Monitor 1 dalam pixel.
-//   Window reminder bakal dibuka mulai dari titik X ini, jadi
-//   munculnya di layar kedua (yang ada di sebelah kanan monitor 1).
-//   Contoh: kalau Monitor 1 Full-HD (1920px), set 1920.
-//   Kalau monitor 2 ada di KIRI monitor 1, kasih nilai MINUS (-1920).
-// MONITOR_2_WIDTH / HEIGHT = resolusi monitor 2.
-// ============================================================
-const MONITOR_2_OFFSET_X = 1920;
-const MONITOR_2_OFFSET_Y = 0;
-const MONITOR_2_WIDTH = 1920;
-const MONITOR_2_HEIGHT = 1080;
+// 🎯 Mapping angka → nama file gambar (matching /kamera page)
+const NUMBER_NAMES: Record<number, string> = {
+  1: "satu", 2: "dua", 3: "tiga", 4: "empat", 5: "lima",
+  6: "enam", 7: "tujuh", 8: "delapan", 9: "sembilan", 10: "sepuluh"
+};
+
+// 🎯 Preset list — 10 posisi kamera
+interface Preset {
+  id: number;
+  name: string;
+  desc: string;
+  cameraX: number;
+  cameraY: number;
+  tilt: number;
+}
+
+const PRESETS: Preset[] = [
+  { id: 1, name: "Preset 1", desc: "Angle atas-kiri", cameraX: -80, cameraY: -30, tilt: -15 },
+  { id: 2, name: "Preset 2", desc: "Angle atas-kanan", cameraX: 80, cameraY: -30, tilt: 15 },
+  { id: 3, name: "Preset 3", desc: "Angle bawah-kiri", cameraX: -80, cameraY: 30, tilt: -15 },
+  { id: 4, name: "Preset 4", desc: "Angle bawah-kanan", cameraX: 80, cameraY: 30, tilt: 15 },
+  { id: 5, name: "Preset 5", desc: "Depan, agak nunduk", cameraX: 0, cameraY: 25, tilt: 0 },
+  { id: 6, name: "Preset 6", desc: "Sisi kiri", cameraX: -110, cameraY: 0, tilt: 0 },
+  { id: 7, name: "Preset 7", desc: "Sisi kanan", cameraX: 110, cameraY: 0, tilt: 0 },
+  { id: 8, name: "Preset 8", desc: "Atas dead-center", cameraX: 0, cameraY: -40, tilt: 0 },
+  { id: 9, name: "Preset 9", desc: "Zoom-in tengah", cameraX: 0, cameraY: -10, tilt: 0 },
+  { id: 10, name: "Preset 10", desc: "Wide shot tengah", cameraX: 0, cameraY: 10, tilt: 0 },
+];
 
 function TutorialKontrolContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const txn = searchParams.get("txn") || "";
 
-  // reminder=1 → mode tampilan di MONITOR 2 (cuma buat ngingetin gesture)
-  const isReminder = searchParams.get("reminder") === "1";
-
   const [activeIndex, setActiveIndex] = useState<number>(0);
+  const [timeLeft, setTimeLeft] = useState(TUTORIAL_DURATION_SEC);
+  const hasRedirectedRef = useRef(false);
 
-  const gestures = [
-    { id: '1jari', title: '1 Jari', desc: 'Glambot ke kanan.', img: '/1.png', btnBg: '#5A8073', icon: '→', btnIcon: '/icon_arrow.png' },
-    { id: '2jari', title: '2 Jari', desc: 'Glambot ke kiri.', img: '/2.png', btnBg: '#805A75', icon: '←', btnIcon: '/icon_arrow.png', rotate: 'rotate-180' },
-    { id: '3jari', title: '3 Jari', desc: 'Glambot ke atas.', img: '/3.png', btnBg: '#5A6B80', icon: '↑', btnIcon: '/icon_arrow.png', rotate: '-rotate-90' },
-    { id: '4jari', title: '4 Jari', desc: 'Glambot ke bawah.', img: '/4.png', btnBg: '#5A8073', icon: '↓', btnIcon: '/icon_arrow.png', rotate: 'rotate-90' },
-    { id: 'telapak', title: 'Telapak', desc: 'Stop & Tengah', img: '/5.png', btnBg: '#73805A', icon: '◎', btnIcon: '/icon_stop.png' },
-    { id: 'kepalan', title: 'Kepalan', desc: 'Ambil Foto!', img: '/kepalan.png', btnBg: '#5A8073', icon: '📷', btnIcon: '/icon_camera.png' },
-    { id: 'jempol', title: 'Jempol', desc: 'Konfirmasi / OK', img: '/jempol.png', btnBg: '#5A8078', icon: '✓', btnIcon: '/icon_check.png' },
-  ];
+  usePageSound("/fase/kontrol.mp3");
 
+  const activePreset = PRESETS[activeIndex];
+
+  // Auto-cycle preset tiap 2.5 detik
   useEffect(() => {
     const timer = setInterval(() => {
-      setActiveIndex((prev) => (prev + 1) % gestures.length);
+      setActiveIndex((prev) => (prev + 1) % PRESETS.length);
     }, 2500);
     return () => clearInterval(timer);
-  }, [gestures.length]);
+  }, []);
 
-  // ===== MODE REMINDER (MONITOR 2): dengerin sinyal sesi selesai → nutup diri =====
+  // Timer 2 menit → auto-redirect ke /instruksi
   useEffect(() => {
-    if (!isReminder) return;
-    let bc: BroadcastChannel | null = null;
-    try {
-      bc = new BroadcastChannel("glambot_session");
-      bc.onmessage = (e) => {
-        if (e?.data?.type === "session_ended") {
-          try { window.close(); } catch (err) { }
-        }
-      };
-    } catch (err) { }
-    return () => { try { bc?.close(); } catch (e) { } };
-  }, [isReminder]);
-
-  const activeGesture = gestures[activeIndex];
-
-  const getMekanikStyle = (id: string) => {
-    let cameraX = 0;
-    let cameraY = 0;
-    let lineX = 0;
-    let lineHeight = 84;
-
-    switch (id) {
-      case '1jari': cameraX = 100; lineX = 100; break;
-      case '2jari': cameraX = -100; lineX = -100; break;
-      case '3jari': cameraY = -35; lineHeight = 84; break;
-      case '4jari': cameraY = 35; lineHeight = 84; break;
+    if (timeLeft <= 0) {
+      if (!hasRedirectedRef.current) {
+        hasRedirectedRef.current = true;
+        handleNext();
+      }
+      return;
     }
+    const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLeft]);
 
-    return {
-      camera: { transform: `translate(${cameraX}px, ${cameraY}px)` },
-      line: { transform: `translateX(${lineX}px)`, height: `${lineHeight}px` }
-    };
-  };
+const handleNext = () => {
+    if (hasRedirectedRef.current) return;
+    hasRedirectedRef.current = true;
 
-  const mekanikStyle = getMekanikStyle(activeGesture.id);
-
-  const getCardGradient = (id: string, isActive: boolean) => {
-    if (isActive) return { background: 'radial-gradient(203.5% 118.75% at 50.3% -4.63%, #7F8E89 0%, #6EAB93 100%)', borderColor: '#A0A0A0' };
-    switch (id) {
-      case '1jari': return { background: 'radial-gradient(203.5% 118.75% at 50.3% -4.63%, #FFFFFF 0%, #999999 100%)' };
-      case '2jari': return { background: 'radial-gradient(200.33% 116.9% at 52.12% -12.96%, #7C948B 0%, #A5849C 86.39%)' };
-      case '3jari': return { background: 'radial-gradient(200.33% 116.9% at 50.3% -10.65%, #79988C 0%, #7B9EAC 87.27%)' };
-      case '4jari': return { background: 'radial-gradient(172.69% 172.69% at 52.37% -45.6%, #7D918A 19.47%, #71A591 73.27%)' };
-      case 'telapak': return { background: 'radial-gradient(172.96% 100% at 50.3% 0%, #7C938B 0%, #B1B191 100%)' };
-      case 'kepalan': return { background: 'radial-gradient(234.34% 135.48% at 50.3% -35.48%, #85988C 0%, #A5849C 84.46%)' };
-      case 'jempol': return { background: 'radial-gradient(172.96% 100% at 50.3% 0%, #88968E 0%, #70A691 100%)' };
-      default: return { background: '#FFFFFF' };
-    }
-  };
-
-  // =====================================================================
-  // TOMBOL "SIAP MULAI SESI FOTO" — orchestrate 2 monitor + nyalain robot
-  // =====================================================================
-  const handleNext = async () => {
     if (!txn) {
-      router.push("/kamera");
+      router.push("/instruksi");
       return;
     }
 
-    // 1. BUKA tutorial-kontrol (reminder) di MONITOR 2
-    try {
-      const features = `popup=yes,left=${MONITOR_2_OFFSET_X},top=${MONITOR_2_OFFSET_Y},width=${MONITOR_2_WIDTH},height=${MONITOR_2_HEIGHT}`;
-      window.open(`/tutorial-kontrol?txn=${txn}&reminder=1`, "glambotMonitor2", features);
-    } catch (err) {
-      console.warn("Gagal buka monitor 2:", err);
-    }
-
-    // 2. NYALAIN ROBOT + KAMERA (API yang dulu di tombol "Mulai Sesi")
-    try {
-      await fetch(`${BACKEND_URL}/api/robot/enable`, { method: "POST" });
-    } catch (err) {
-      console.warn("Gagal enable robot:", err);
-    }
-
-    // 3. MONITOR 1 (window ini) → pindah ke kamera
-    router.push(`/kamera?txn=${txn}`);
+    // Navigate ke halaman instruksi (robot enable dipindah ke sana)
+    router.push(`/instruksi?txn=${txn}`);
   };
 
-  // ===== ICON TOMBOL pake SVG INLINE (gak butuh file PNG, gak akan 404) =====
-  const renderBtnIcon = (id: string) => {
-    const stroke = "#FFFFFF";
-    const sw = 2.5;
-    switch (id) {
-      case '1jari': // panah kanan
-        return <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>;
-      case '2jari': // panah kiri
-        return <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>;
-      case '3jari': // panah atas
-        return <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M6 11l6-6 6 6" /></svg>;
-      case '4jari': // panah bawah
-        return <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M6 13l6 6 6-6" /></svg>;
-      case 'telapak': // stop (lingkaran target)
-        return <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3" fill={stroke} stroke="none" /></svg>;
-      case 'kepalan': // kamera
-        return <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>;
-      case 'jempol': // ceklis
-        return <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={sw + 0.5} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>;
-      default:
-        return <span className="text-white text-base font-bold">✓</span>;
-    }
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -198,112 +130,193 @@ function TutorialKontrolContent() {
         <div className="h-full flex-grow" style={{ background: 'linear-gradient(90deg, #151515 0%, #252525 100%)', transform: 'matrix(-1, 0, 0, 1, 0, 0)' }}></div>
       </div>
 
+      {/* TIMER */}
+      <div className="fixed top-6 right-6 z-[80] px-4 h-[52px] bg-white border-[1.5px] border-[#54868A] rounded-[28px] shadow-md flex items-center gap-3">
+        <div className="w-[32px] h-[32px] bg-[#3F9C9B] border-[2px] border-[#235757] rounded-full flex items-center justify-center shadow-inner shrink-0">
+          <img src="/icon1.png" alt="timer" className="w-[16px] h-[16px] object-contain" />
+        </div>
+        <div className="flex flex-col justify-center leading-none">
+          <span className="font-hind font-semibold text-[10px] tracking-widest text-[#7A7979]">SISA WAKTU</span>
+          <span className="font-inter font-bold text-[22px] text-[#FFAE00] tracking-[-0.05em] leading-none" style={{ textShadow: "1px 1px 3px rgba(0,0,0,0.2)" }}>
+            {formatTime(timeLeft)}
+          </span>
+        </div>
+      </div>
+
       {/* HEADER AREA */}
       <div className="w-full max-w-[1225px] flex flex-col items-center mt-12 mb-16 z-10 text-center relative px-2">
         <p className="font-hind font-semibold text-[28px] text-[#37786D] tracking-[-0.1em] leading-none text-center mb-1">
-          {isReminder ? "Sesi foto sedang berjalan" : "Sebelum mulai sesi foto"}
+          Panduan Kontrol Kamera Glambot
         </p>
         <h1 className="font-inter font-bold text-[64px] text-[#332C2C] tracking-[-0.06em] leading-[77px]">
-          Tutorial Kontrol Glambot
+          Preset Kamera Glambot
         </h1>
         <div className="text-[28px] text-[#328F7F] mb-3">★</div>
-        <p className="font-hind font-normal text-[20px] text-[#706A6A] tracking-[-0.08em]">
-          Glambot dapat di kontrol melalui gesture tangan seperti di bawah ini...
+        <p className="font-inter font-semibold text-[20px] text-[#6F6F6F] mt-4 leading-[24px] whitespace-nowrap">
+          Glambot dapat di kontrol melalui gesture jari tangan 1 sampai 10 seperti di bawah ini
         </p>
       </div>
 
       {/* CONTAINER UTAMA */}
-      <div className="w-full max-w-[1200px] flex flex-col xl:flex-row items-center justify-center gap-6 mb-10 z-10">
+      <div className="w-full max-w-[1400px] flex flex-col xl:flex-row items-center justify-center gap-6 mb-10 z-10">
 
-        {/* PANEL PREVIEW ROBOT */}
+        {/* PANEL PREVIEW ROBOT (POLISHED) */}
         <div
-          className="w-full sm:w-[459px] h-[450px] flex flex-col items-center justify-between p-6 relative overflow-hidden shadow-md shrink-0"
+          className="w-full xl:w-[420px] h-[420px] flex flex-col items-center justify-between p-5 relative overflow-hidden shadow-xl shrink-0"
           style={{
-            background: 'radial-gradient(119.89% 119.89% at 50.11% -11%, #225444 0%, #102420 37.98%, #21293D 91.72%)',
-            border: '1.5px solid #54868A',
-            borderRadius: '23px'
+            background: 'radial-gradient(120% 120% at 50% -10%, #2A6B57 0%, #143028 40%, #1A2438 90%)',
+            border: '2px solid #3A9F86',
+            borderRadius: '20px'
           }}
         >
-          <div className="flex items-center justify-center gap-2 px-4 h-[25px] bg-[#305A53] border border-[#5D837A] rounded-[41px] mt-2 self-start ml-2 shadow-inner">
-            <div className="w-[13px] h-[13px] rounded-full bg-[#7DB7A2]" />
-            <span className="font-hind font-semibold text-[16px] text-[#95C0B9] tracking-[-0.09em] pb-0.5">Pratinjau Langsung</span>
+          {/* Label atas kiri */}
+          <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-[#305A53] border border-[#5D837A] rounded-full self-start shadow-inner">
+            <div className="w-[10px] h-[10px] rounded-full bg-[#27E6A0] animate-pulse" />
+            <span className="font-hind font-semibold text-[13px] text-[#A5CFC4] tracking-[-0.05em]">Pratinjau Robot</span>
           </div>
 
+          {/* Robot arm ilustrasi */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-[298px] h-[7px] bg-[#213736] rounded-[11px] relative flex items-center justify-center">
-              <div className="absolute w-[7px] bg-[#213736] rounded-[11px] origin-top top-[3.5px] transition-all duration-700 ease-in-out" style={mekanikStyle.line} />
-              <div className="absolute w-[47px] h-[47px] bg-[#254040] rounded-[11px] flex items-center justify-center transition-transform duration-700 ease-in-out shadow-xl z-20 top-[-20px]" style={mekanikStyle.camera}>
-                <div className="w-[21px] h-[21px] border-[3px] border-[#3E8568] rounded-full flex items-center justify-center">
-                  <div className="w-[13px] h-[13px] rounded-full bg-[#27E6A0]" />
-                </div>
+            {/* Base plate — lebih terang */}
+            <div
+              className="absolute bottom-[50px] w-[200px] h-[12px] rounded-[6px] shadow-xl"
+              style={{
+                background: 'linear-gradient(180deg, #4A8778 0%, #2A5A4A 100%)',
+                border: '1.5px solid #3E8568',
+              }}
+            ></div>
+
+            {/* Base joint (bulat di atas base plate) */}
+            <div
+              className="absolute bottom-[54px] w-[24px] h-[24px] rounded-full shadow-lg z-10"
+              style={{
+                background: 'radial-gradient(circle at 30% 30%, #6BAB99 0%, #3E7566 60%, #1F4238 100%)',
+                border: '2px solid #4A8778',
+                left: 'calc(50% - 12px)',
+              }}
+            ></div>
+
+            {/* Arm segment (vertical rod) — lebih terang, connected ke camera */}
+            <div
+              className="absolute w-[10px] rounded-full transition-all duration-1000 ease-in-out shadow-xl z-[15]"
+              style={{
+                background: 'linear-gradient(90deg, #4A8778 0%, #6BAB99 50%, #4A8778 100%)',
+                border: '1px solid #3E8568',
+                bottom: `65px`,
+                left: `calc(50% + ${activePreset.cameraX / 2}px - 5px)`,
+                height: `${150 - activePreset.cameraY * 0.3}px`,
+                transform: `rotate(${activePreset.tilt * 0.4}deg)`,
+                transformOrigin: 'bottom center'
+              }}
+            />
+
+            {/* Camera head — connected ke arm (offset lebih dekat) */}
+            <div
+              className="absolute w-[76px] h-[58px] rounded-[12px] flex items-center justify-center shadow-2xl z-20 transition-all duration-1000 ease-in-out"
+              style={{
+                background: 'linear-gradient(135deg, #4A8778 0%, #1F4238 100%)',
+                border: '2.5px solid #6BAB99',
+                transform: `translate(${activePreset.cameraX}px, ${activePreset.cameraY}px) rotate(${activePreset.tilt}deg)`,
+                top: '38%',
+                left: 'calc(50% - 38px)',
+              }}
+            >
+              {/* Lens ring */}
+              <div className="w-[32px] h-[32px] rounded-full border-[3px] border-[#6BAB99] flex items-center justify-center bg-[#0F1F1B]">
+                <div className="w-[18px] h-[18px] rounded-full bg-[#27E6A0] shadow-[0_0_12px_#27E6A0]" />
               </div>
+              {/* LED indicator */}
+              <div className="absolute top-1.5 right-1.5 w-[5px] h-[5px] rounded-full bg-[#FF5555] animate-pulse shadow-[0_0_4px_#FF5555]"></div>
+              {/* Small detail: model text */}
+              <div className="absolute bottom-1 left-2 w-[8px] h-[3px] rounded-full bg-[#6BAB99]/60"></div>
             </div>
           </div>
 
-          <div className="flex items-center justify-center gap-1 px-4 h-[25px] bg-[#305A53] border border-[#5D837A] rounded-[41px] mb-2 shadow-inner">
-            <span className="font-hind font-semibold text-[15px] text-[#95C0B9] tracking-[-0.09em] pb-0.5">{activeGesture.desc}</span>
-            {['1jari', '2jari', '3jari', '4jari'].includes(activeGesture.id) && (
-              <span className={`text-[12px] text-[#95C0B9] font-bold ${activeGesture.rotate || ''}`}>→</span>
-            )}
+          {/* Label preset aktif (bawah) */}
+          <div className="flex flex-col items-center gap-1.5 z-30 mt-auto w-full">
+            <div className="flex items-center justify-center gap-2 px-4 py-1.5 bg-[#3A9F86] border border-[#5DBFAA] rounded-full shadow-lg">
+              <span className="font-inter font-black text-[16px] text-white tracking-tight">
+                {activePreset.name}
+              </span>
+            </div>
+            <span className="font-hind font-medium text-[15px] text-[#A5CFC4] tracking-[-0.04em]">
+              {activePreset.desc}
+            </span>
           </div>
         </div>
 
-        {/* GRID GESTURE */}
-        <div className="flex-1 flex flex-wrap justify-start gap-3 max-w-[740px]">
-          {gestures.map((gesture) => {
-            const isActive = activeGesture.id === gesture.id;
-            const cardStyle = getCardGradient(gesture.id, isActive);
+        {/* GRID PRESET (2 rows × 5 cols, BIGGER) */}
+        <div className="flex-1 max-w-[1050px]">
+          <div className="grid grid-cols-5 gap-4">
+            {PRESETS.map((preset) => {
+              const isActive = activePreset.id === preset.id;
+              const imgName = NUMBER_NAMES[preset.id];
+              return (
+                <div
+                  key={preset.id}
+                  className={`
+                    flex flex-col items-center justify-between py-4 px-3 rounded-[20px] transition-all duration-300 shadow-md border-2 h-[190px]
+                    ${isActive
+                      ? 'bg-gradient-to-br from-[#3A9F86] to-[#245F55] border-white scale-105 shadow-[0_0_20px_rgba(58,159,134,0.5)] z-10'
+                      : 'bg-white border-[#54868A]/40'
+                    }
+                  `}
+                >
+                  {/* Number badge */}
+                  <div className={`
+                    w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0
+                    ${isActive ? 'bg-white' : 'bg-[#3A9F86]'}
+                  `}>
+                    <span className={`font-inter font-black text-[17px] ${isActive ? 'text-[#3A9F86]' : 'text-white'}`}>
+                      {preset.id}
+                    </span>
+                  </div>
 
-            return (
-              <div
-                key={gesture.id}
-                className={`w-[165px] h-[216px] flex flex-col items-center justify-between py-4 px-2 rounded-[23px] transition-all duration-500 shadow-md border ${isActive ? 'scale-[1.03] z-10 shadow-[0_0_15px_rgba(49,189,199,0.25)]' : 'border-[#54868A]'}`}
-                style={cardStyle}
-              >
-                <h3 className="font-hind font-semibold text-[20px] text-white tracking-[-0.08em] text-center leading-none">{gesture.title}</h3>
-                <div className="h-[50px] flex items-center justify-center shrink-0">
-                  <SmartImg src={gesture.img} alt={gesture.title} className={`w-[48px] h-[50px] object-contain transition-opacity duration-300 ${isActive ? 'opacity-100' : 'opacity-70'}`} fallback={gesture.icon} />
+                  {/* Gesture image */}
+                  <div className="h-[68px] flex items-center justify-center shrink-0">
+                    <SmartImg
+                      src={`/${imgName}.png`}
+                      alt={`Gesture ${preset.id}`}
+                      className="w-full h-full object-contain"
+                      fallback={String(preset.id)}
+                    />
+                  </div>
+
+                  {/* Preset description */}
+                  <p className={`
+                    font-hind font-semibold text-[14px] text-center leading-tight tracking-[-0.03em]
+                    ${isActive ? 'text-white' : 'text-[#405444]'}
+                  `}>
+                    {preset.desc}
+                  </p>
                 </div>
-                <p className="font-hind font-normal text-[13px] text-[#475550] tracking-[-0.08em] text-center leading-tight max-w-[120px]">{gesture.desc.replace('.', '')}</p>
-                <div className="w-[41px] h-[41px] rounded-[10px] border border-[#808080] flex items-center justify-center shadow-inner shrink-0" style={{ backgroundColor: gesture.btnBg }}>
-                  {renderBtnIcon(gesture.id)}
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      {/* FOOTER — tombol cuma muncul di MONITOR 1 (bukan reminder) */}
+      {/* FOOTER — tombol (matching original style) */}
       <div className="w-full max-w-[1200px] flex items-center justify-center z-10">
-        {isReminder ? (
-          <div className="flex items-center gap-3 px-8 h-[53px] bg-[#305A53] border border-[#5D837A] rounded-[23px] shadow-md">
-            <span className="w-[14px] h-[14px] rounded-full bg-[#27E6A0] animate-pulse"></span>
-            <span className="font-inter font-bold italic text-[20px] text-white tracking-[-0.06em]">
-              Sesi berjalan — ikuti gesture di atas ✋
-            </span>
+        <button
+          onClick={handleNext}
+          className="flex items-center justify-center gap-3 w-full sm:w-[265px] h-[53px] bg-[#3A9F86] border-3 border-[#E3D5D5] rounded-[23px] shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+        >
+         <span className="font-inter font-extrabold italic text-[20px] text-white tracking-[-0.06em]">
+            Siap Lanjut
+          </span>
+          <div className="w-[24px] h-[24px] flex items-center justify-center rotate-180 invert">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
           </div>
-        ) : (
-          <button
-            onClick={handleNext}
-            className="flex items-center justify-center gap-3 w-full sm:w-[265px] h-[53px] bg-[#3A9F86] border-3 border-[#E3D5D5] rounded-[23px] shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-          >
-            <span className="font-inter font-extrabold italic text-[20px] text-white tracking-[-0.06em]">
-              Siap! Mulai Sesi Foto
-            </span>
-            <div className="w-[24px] h-[24px] flex items-center justify-center rotate-180 invert">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 12H5M12 19l-7-7 7-7" />
-              </svg>
-            </div>
-          </button>
-        )}
+        </button>
       </div>
 
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Hind+Vadodara:wght@400;600;700&family=Inter:ital,wght@0,500;0,700;1,800&display=swap');
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .font-hind { font-family: 'Hind Vadodara', sans-serif; }
+        .font-inter { font-family: 'Inter', sans-serif; }
       `}</style>
     </main>
   );

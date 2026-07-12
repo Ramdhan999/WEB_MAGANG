@@ -87,7 +87,7 @@ export default function PilihPaketPage() {
         <h1 className="font-inter font-bold text-[64px] text-[#332C2C] tracking-[-0.06em] leading-[77px]">
           Pilih Paket Foto
         </h1>
-        <p className="font-inter font-semibold text-[20px] text-[#6F6F6F] mt-4 max-w-[603px] leading-[24px]">
+        <p className="font-inter font-semibold text-[20px] text-[#6F6F6F] mt-4 max-w-[610px] leading-[24px]">
           Semua paket sudah termasuk semua digital copy & filter premium. Foto sepuasnya, pilih terbaik untuk dicetak.
         </p>
       </div>
@@ -196,11 +196,13 @@ export default function PilihPaketPage() {
       {/* FOOTER */}
       <div className="w-full max-w-[1440px] flex flex-col items-center z-10 relative mt-0 px-6 md:px-4">
         <div className="w-full flex justify-start mt-16">
-          <button
-            onClick={() => router.push("/tutorial")}
-            className="font-inter font-medium italic text-[24px] tracking-[-0.06em] text-[#0E1E1A] hover:opacity-70 transition-opacity"
+          <button 
+            onClick={() => router.push("/tutorial")} 
+            className="flex items-center gap-2 px-8 h-[53px] bg-white border-[1.5px] border-[#54868A] rounded-full shadow-md hover:scale-105 active:scale-95 transition-all"
           >
-            ← KEMBALI
+            <span className="font-inter font-bold italic text-[20px] tracking-[-0.06em] text-[#0E1E1A]">
+              ← KEMBALI
+            </span>
           </button>
         </div>
       </div>

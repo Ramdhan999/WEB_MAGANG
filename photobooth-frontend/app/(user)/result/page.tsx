@@ -107,7 +107,7 @@ function ResultContent() {
   const [zipProgress, setZipProgress] = useState(0);
 
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
-  usePageSound("/fase/result.mpeg");
+  usePageSound("/fase/result.mp3");
 
   // 🎯 Galeri QR + frame upload
   const [galleryURL, setGalleryURL] = useState<string>("");

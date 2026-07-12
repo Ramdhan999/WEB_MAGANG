@@ -332,6 +332,28 @@ func main() {
 		c.JSON(200, gin.H{"event": "preset", "n": n, "auto_done": true})
 	})
 
+	// 🔒 SIM: set FSM state + unlock progress (untuk test frontend tanpa Flask)
+	// Curl:
+	//   Invoke-RestMethod -Uri "http://localhost:8080/api/sim/fsm?state=UNLOCKING&progress=0.5" -Method POST
+	r.POST("/api/sim/fsm", func(c *gin.Context) {
+		state := c.Query("state")          // "LOCKED" | "UNLOCKING" | "UNLOCKED" | "CONFIRMING" | "MOVING" | "COOLDOWN"
+		progressStr := c.Query("progress") // "0.0" - "1.0"
+
+		progress := 0.0
+		if progressStr != "" {
+			if p, err := strconv.ParseFloat(progressStr, 64); err == nil {
+				progress = p
+			}
+		}
+
+		services.SimSetFsm(state, progress)
+		c.JSON(200, gin.H{
+			"ok":              true,
+			"fsm_state":       state,
+			"unlock_progress": progress,
+		})
+	})
+
 	// State buat frontend polling (suara + countdown)
 	r.GET("/api/robot/state", func(c *gin.Context) {
 		c.JSON(200, services.RobotStateJSON())

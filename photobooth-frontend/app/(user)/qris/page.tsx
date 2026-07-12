@@ -31,7 +31,16 @@ function QrisContent() {
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const hasTriggeredRef = useRef(false);
+  const paymentDataRef = useRef<PaymentData | null>(null);
+  const hasRedirectedRef = useRef(false);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   usePageSound("/fase/qris.mp3");
+
+  // 🎯 Sync paymentData ke ref (buat polling access)
+  useEffect(() => {
+    paymentDataRef.current = paymentData;
+  }, [paymentData]);
 
   // TIMER
   useEffect(() => {
@@ -42,6 +51,42 @@ function QrisContent() {
     const timer = setInterval(() => setTimeLeft((p) => p - 1), 1000);
     return () => clearInterval(timer);
   }, [timeLeft, router, paketDipilih]);
+
+  // 🎯 Auto-polling status pembayaran (fallback kalo onSuccess gak fire)
+  useEffect(() => {
+    if (!paymentData?.transaction_id) return;
+
+    const checkPaymentStatus = async () => {
+      if (hasRedirectedRef.current) return;
+      const txnId = paymentDataRef.current?.transaction_id;
+      if (!txnId) return;
+
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/payment/status/${txnId}`);
+        if (!res.ok) return;
+
+        const data = await res.json();
+        // Cek status paid/success (sesuaikan dengan response backend)
+        const status = (data.status || data.payment_status || "").toLowerCase();
+
+        if (status === "paid" || status === "success" || status === "settlement") {
+          hasRedirectedRef.current = true;
+          if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+          console.log("💰 [POLLING] Payment confirmed:", status);
+          router.push(`/success?txn=${txnId}`);
+        }
+      } catch (err) {
+        // Polling gagal, silent (jangan spam log)
+      }
+    };
+
+    // Polling tiap 3 detik
+    pollingIntervalRef.current = setInterval(checkPaymentStatus, 3000);
+
+    return () => {
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+    };
+  }, [paymentData?.transaction_id, router]);
 
   // FETCH PAYMENT + BUKA MIDTRANS
   useEffect(() => {
@@ -67,6 +112,8 @@ function QrisContent() {
 
         (window as any).snap.pay(data.token, {
           onSuccess: async function (result: any) {
+            if (hasRedirectedRef.current) return;
+            hasRedirectedRef.current = true;
             try {
               await fetch(`${BACKEND_URL}/api/payment/confirm`, {
                 method: "POST",
@@ -91,6 +138,7 @@ function QrisContent() {
           },
           onClose: function () {
             console.log("Popup ditutup sama user");
+            // Kalo user tutup popup, polling tetep jalan buat detect payment
           },
         });
       } catch (error) {
@@ -194,8 +242,8 @@ function QrisContent() {
             </span>
           </div>
 
-          <div className="flex flex-row gap-4 w-full justify-center mt-2">
-
+          {/* 🎯 Tombol Batal (di tengah, tanpa Sudah Bayar) */}
+          <div className="flex justify-center w-full mt-2">
             <button
               onClick={() => router.push(`/pembayaran/${paketDipilih}`)}
               className="flex items-center justify-center transition-all hover:scale-105 active:scale-95 bg-white border border-[#000000] w-[220px] h-[53px] rounded-[23px] shadow-sm"
@@ -204,25 +252,6 @@ function QrisContent() {
                 Batal
               </span>
             </button>
-
-            <button
-              onClick={() => {
-                if (paymentData?.transaction_id) {
-                  router.push(`/success?txn=${paymentData.transaction_id}`);
-                } else {
-                  router.push("/success");
-                }
-              }}
-              className="flex items-center justify-center gap-1 transition-all hover:scale-105 active:scale-95 bg-[#3A9F86] w-[220px] h-[53px] rounded-[23px] shadow-md"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="mr-0.5">
-                <path d="M20 6L9 17l-5-5" />
-              </svg>
-              <span className="font-inter font-extrabold italic tracking-[-0.06em] text-[18px] text-white">
-                Sudah Bayar
-              </span>
-            </button>
-
           </div>
         </div>
       </main>

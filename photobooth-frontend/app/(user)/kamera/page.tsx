@@ -9,8 +9,8 @@ const DEBUG_STATE = true;
 
 
 // 🎯 Gesture config
-const START_GESTURE = 5;                                // Telapak (5 jari) → sinyal MULAI
-const PRESET_GESTURES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; // Preset (5 juga bisa jadi preset setelah START)
+const START_GESTURE = 5;
+const PRESET_GESTURES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 // 🎯 Mapping angka → nama file gambar di /public
 const NUMBER_NAMES: Record<number, string> = {
@@ -23,13 +23,247 @@ const NUMBER_NAMES: Record<number, string> = {
 const CAPTURE_ASPECT = 3 / 2;
 
 // 🎯 Preview foto config
-const PREVIEW_DURATION_SEC = 3;
+const PREVIEW_DURATION_SEC = 4;
+
+// 🔒 FSM state type dari backend
+type FsmStateType = "LOCKED" | "UNLOCKING" | "UNLOCKED" | "CONFIRMING" | "MOVING" | "COOLDOWN" | "";
+
+// 🤖 Flask MJPEG stream URL
+const FLASK_URL = "http://localhost:5001";
+const FLASK_VIDEO_FEED = `${FLASK_URL}/video_feed`;
 
 interface SessionData {
   id: number;
   transaction_id: string;
   template_name: string;
   frame_id: string;
+}
+
+// ============================================================================
+// 🔢 MINI GESTURE CARD — untuk grid preset di sidebar
+// ============================================================================
+function MiniGestureCard({
+  n,
+  isStart,
+  isActive,
+  startTriggered,
+}: {
+  n: number;
+  isStart?: boolean;
+  isActive?: boolean;
+  startTriggered?: boolean;
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const imgName = NUMBER_NAMES[n];
+
+  return (
+    <div
+      className={`
+        aspect-square rounded-[8px] flex items-center justify-center relative
+        transition-all shadow-sm p-1
+        ${isStart
+          ? `bg-[#3A9F86] border-[2px] border-white shadow-[0_2px_6px_rgba(58,159,134,0.5)] ${startTriggered ? 'ring-2 ring-[#3A9F86]/60' : ''}`
+          : isActive
+            ? 'bg-[#3A9F86] border-[2px] border-white shadow-[0_0_10px_rgba(58,159,134,0.7)] scale-110'
+            : 'bg-[#5A8073] border border-[#808080]'
+        }
+      `}
+    >
+      {!imgFailed ? (
+        <img
+          src={`/${imgName}.png`}
+          alt={`Gesture ${n}`}
+          className="w-full h-full object-contain"
+          onError={() => setImgFailed(true)}
+          draggable={false}
+        />
+      ) : (
+        <span
+          className="font-inter font-black text-white tracking-tight"
+          style={{ fontSize: '22px', textShadow: '0 1px 2px rgba(0,0,0,0.35)' }}
+        >
+          {n}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// 🤖 GESTURE DETECTION PANEL — panel kanan (compact tapi gede & rapi)
+// ============================================================================
+function GestureDetectionPanel({
+  fsmState,
+  unlockProgress,
+  activePreset,
+  startTriggered,
+}: {
+  fsmState: FsmStateType;
+  unlockProgress: number;
+  activePreset: number | null;
+  startTriggered: boolean;
+}) {
+  const [videoError, setVideoError] = useState(false);
+
+  const isLocked = fsmState === "LOCKED" || fsmState === "";
+  const isUnlocking = fsmState === "UNLOCKING";
+  const isUnlocked = fsmState === "UNLOCKED";
+  const isConfirming = fsmState === "CONFIRMING";
+  const isMoving = fsmState === "MOVING";
+
+  // FSM badge config
+  const stateBadge = isLocked
+    ? { label: "LOCKED", color: "#B84545", borderColor: "#7A2E2E", bgColor: "rgba(184,69,69,0.15)" }
+    : isUnlocking
+      ? { label: "UNLOCKING", color: "#D29E38", borderColor: "#9A6E1E", bgColor: "rgba(210,158,56,0.15)" }
+      : isUnlocked
+        ? { label: "UNLOCKED", color: "#3A9F86", borderColor: "#245F55", bgColor: "rgba(58,159,134,0.15)" }
+        : isConfirming
+          ? { label: "CONFIRMING", color: "#3F9C9B", borderColor: "#235757", bgColor: "rgba(63,156,155,0.15)" }
+          : isMoving
+            ? { label: "MOVING", color: "#7B61FF", borderColor: "#4E3FA6", bgColor: "rgba(123,97,255,0.15)" }
+            : { label: "COOLDOWN", color: "#6F6F6F", borderColor: "#404040", bgColor: "rgba(111,111,111,0.15)" };
+
+  return (
+    <div className="w-full h-full flex flex-col gap-3">
+
+      {/* SECTION 1: HEADER TITLE — gedein */}
+      <div className="flex items-center gap-3 shrink-0">
+        <div className="w-[40px] h-[40px] rounded-full bg-[#3A9F86] border-[2px] border-[#245F55] flex items-center justify-center shadow-md shrink-0">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </div>
+        <div className="flex flex-col leading-none">
+          <span className="font-hind font-bold text-[12px] text-[#6F6F6F] tracking-widest uppercase">
+            Detection
+          </span>
+          <span className="font-inter font-bold text-[20px] text-[#332C2C] tracking-[-0.03em] mt-1">
+            Gesture Preview
+          </span>
+        </div>
+      </div>
+
+      {/* SECTION 2: LIVE VIEW — aspect 4:3, gede */}
+      <div className="w-full aspect-[4/3] rounded-[14px] overflow-hidden shadow-lg border-[3px] border-[#54868A] bg-[#232323] relative shrink-0">
+        {!videoError ? (
+          <img
+            src={FLASK_VIDEO_FEED}
+            alt="Robot detection live view"
+            className="w-full h-full object-cover"
+            onError={() => setVideoError(true)}
+            crossOrigin="anonymous"
+          />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-gradient-to-b from-[#232323] to-[#344A41]">
+            <div className="w-[75px] h-[75px] rounded-full bg-white/10 border-[2px] border-white/20 flex items-center justify-center animate-pulse">
+              <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+            </div>
+            <p className="font-inter font-semibold text-[14px] text-white/70 text-center px-4">
+              Menunggu koneksi robot...
+            </p>
+            <p className="font-hind font-medium text-[11px] text-white/45 tracking-widest uppercase">
+              Live Detection Standby
+            </p>
+          </div>
+        )}
+
+        {!videoError && (
+          <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2.5 py-1 bg-black/70 backdrop-blur-sm rounded-full">
+            <div className="w-[7px] h-[7px] rounded-full bg-[#FF3838] animate-pulse"></div>
+            <span className="font-hind font-bold text-[10px] text-white tracking-widest">LIVE</span>
+          </div>
+        )}
+      </div>
+
+      {/* SECTION 3: FSM STATE — compact, readable */}
+      <div
+        className="rounded-[12px] px-4 py-3 border-[2px] shadow-sm flex items-center justify-between shrink-0"
+        style={{
+          backgroundColor: stateBadge.bgColor,
+          borderColor: stateBadge.borderColor,
+        }}
+      >
+        <div className="flex items-center gap-2.5">
+          <div className="w-[10px] h-[10px] rounded-full animate-pulse" style={{ backgroundColor: stateBadge.color }}></div>
+          <span className="font-hind font-bold text-[11px] text-[#6F6F6F] tracking-widest uppercase">
+            State
+          </span>
+        </div>
+        <span
+          className="font-inter font-black text-[18px] tracking-[-0.03em] leading-none"
+          style={{ color: stateBadge.color }}
+        >
+          {stateBadge.label}
+        </span>
+      </div>
+
+      {/* SECTION 4: UNLOCK PROGRESS — bigger */}
+      <div className="bg-white rounded-[14px] p-4 border-[1.5px] border-[#D5C5B0] shadow-sm shrink-0">
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="flex items-center gap-2">
+            <div className="w-[7px] h-[7px] rounded-full bg-[#3A9F86]"></div>
+            <span className="font-hind font-bold text-[12px] text-[#332C2C] tracking-wider uppercase">
+              Unlock Progress
+            </span>
+          </div>
+          <span className="font-inter font-black text-[18px] text-[#3A9F86] tracking-[-0.03em]">
+            {Math.round(unlockProgress * 100)}%
+          </span>
+        </div>
+        <div className="w-full h-[12px] bg-[#E3D5D5] rounded-full overflow-hidden shadow-inner">
+          <div
+            className="h-full rounded-full transition-all duration-150"
+            style={{
+              width: `${unlockProgress * 100}%`,
+              background: 'linear-gradient(90deg, #3A9F86 0%, #96E4A9 100%)',
+              boxShadow: unlockProgress > 0 ? '0 0 8px rgba(58,159,134,0.6)' : 'none'
+            }}
+          />
+        </div>
+      </div>
+
+      {/* SECTION 5: PRESET GRID — MULAI di tengah atas, grid uniform */}
+      <div className="flex-1 bg-white rounded-[14px] p-4 border-[1.5px] border-[#D5C5B0] shadow-sm flex flex-col gap-3 min-h-0">
+
+        {/* MULAI card — center top, uniform size dengan preset */}
+        <div className="flex flex-col items-center gap-1.5 shrink-0">
+          <div className="w-[62px] h-[62px]">
+            <MiniGestureCard n={5} isStart startTriggered={startTriggered} />
+          </div>
+          <span className="font-hind font-bold text-[11px] text-[#3A9F86] tracking-[0.1em] uppercase leading-tight">
+            ① Mulai
+          </span>
+        </div>
+
+        {/* Divider — di atas label */}
+        <div className="h-[1px] bg-[#D5C5B0] shrink-0"></div>
+
+        {/* Label preset — center, stacked */}
+        <div className="flex flex-col items-center gap-0.5 shrink-0">
+          <span className="font-hind font-bold text-[12px] text-[#2B6E6A] tracking-[0.1em] uppercase leading-tight">
+            ② Pilih Preset
+          </span>
+          <span className="font-hind font-semibold text-[11px] text-[#6F6F6F] tracking-wider">
+            Angka 1 - 10
+          </span>
+        </div>
+
+        {/* Preset grid 5x2 — semua card uniform size sama kayak MULAI */}
+        <div className="grid grid-cols-5 gap-2 flex-1 content-center">
+          {PRESET_GESTURES.map(n => (
+            <div key={n} className="min-h-[62px]">
+              <MiniGestureCard n={n} isActive={activePreset === n} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function SesiFotoContent() {
@@ -54,11 +288,15 @@ function SesiFotoContent() {
   const [activePreset, setActivePreset] = useState<number | null>(null);
   const [startTriggered, setStartTriggered] = useState(false);
 
+  // 🔒 FSM state dari backend
+  const [fsmState, setFsmState] = useState<FsmStateType>("LOCKED");
+  const [unlockProgress, setUnlockProgress] = useState(0);
+
   // 🎯 Preview foto setelah jepret
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const [previewCountdown, setPreviewCountdown] = useState(PREVIEW_DURATION_SEC);
   const previewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const previewPhotoRef = useRef<string | null>(null); // Sync ref buat polling check
+  const previewPhotoRef = useRef<string | null>(null);
 
   const cameraContainerRef = useRef<HTMLDivElement>(null);
   const [containerAspect, setContainerAspect] = useState(16 / 9);
@@ -80,7 +318,6 @@ function SesiFotoContent() {
   useEffect(() => { isCountingDownRef.current = isCountingDown; }, [isCountingDown]);
   usePageSound("/fase/layar.mp3");
 
-  // 🎯 Ukur aspect ratio kamera container secara dinamis (buat guide strips)
   useEffect(() => {
     if (!cameraContainerRef.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -95,7 +332,6 @@ function SesiFotoContent() {
     return () => observer.disconnect();
   }, []);
 
-  // ===== PRELOAD AUDIO =====
   useEffect(() => {
     const files: Record<string, string> = {
       "4": "/sounds/4.mp3",
@@ -142,7 +378,6 @@ function SesiFotoContent() {
     } catch (e) { console.warn("🔇 [SOUND] error:", key, e); }
   };
 
-  // 🎯 Show foto preview selama 3 detik
   const showPreview = (photoUrl: string) => {
     if (DEBUG_STATE) console.log("🖼️ [PREVIEW] show:", photoUrl);
     setPreviewPhoto(photoUrl);
@@ -168,7 +403,6 @@ function SesiFotoContent() {
     }, 1000);
   };
 
-  // ===== INIT SESSION =====
   useEffect(() => {
     const initSession = async () => {
       if (!txn) {
@@ -242,15 +476,18 @@ function SesiFotoContent() {
     return () => { stream?.getTracks().forEach((t) => t.stop()); };
   }, [simMode]);
 
+  // ⏸️ Timer PAUSE saat countdown 3-2-1 ATAU saat preview foto tampil
+  // Resume otomatis setelah preview hilang, biar gak buang waktu sesi
   useEffect(() => {
     if (timeLeft <= 0) return;
+
+    // Guard: skip decrement kalo lagi countdown atau preview
+    if (isCountingDown || previewPhoto) return;
+
     const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
     return () => clearInterval(timer);
-  }, [timeLeft]);
+  }, [timeLeft, isCountingDown, previewPhoto]);
 
-  // =====================================================================
-  // ⏰ TIMER HABIS → DISABLE ROBOT + redirect ke /frame
-  // =====================================================================
   useEffect(() => {
     if (session && timeLeft <= 0 && !hasEndedRef.current) {
       hasEndedRef.current = true;
@@ -264,11 +501,10 @@ function SesiFotoContent() {
         bc.postMessage({ type: "session_ended" });
         bc.close();
       } catch (e) { }
-      router.push(`/frame?txn=${txn}`);
+      router.push(`/terima-kasih?txn=${txn}`);
     }
   }, [timeLeft, session, txn, router]);
 
-  // 🎯 Cleanup preview timer pas unmount
   useEffect(() => {
     return () => {
       if (previewTimerRef.current) {
@@ -277,9 +513,6 @@ function SesiFotoContent() {
     };
   }, []);
 
-  // =====================================================================
-  // POLLING STATE ROBOT
-  // =====================================================================
   useEffect(() => {
     if (!isCameraActive) return;
 
@@ -292,19 +525,22 @@ function SesiFotoContent() {
         simModeRef.current = !!s.sim_enabled;
         setSimMode(!!s.sim_enabled);
 
+        // 🔒 Update FSM state + unlock progress
+        const newFsmState = (s.fsm_state as FsmStateType) || "LOCKED";
+        setFsmState(newFsmState);
+        setUnlockProgress(s.unlock_progress || 0);
+
         const prev = seqRef.current;
         if (!prev.init) {
           seqRef.current = { palm: s.palm_seq, gesture: s.gesture_seq, preset: s.preset_seq, done: s.done_seq, init: true };
           return;
         }
 
-        // 🎯 Telapak ke-trigger → sinyal MULAI aktif
         if (s.palm_seq > prev.palm) {
           setStartTriggered(true);
           if (DEBUG_STATE) console.log("✋ [PALM] MULAI ter-trigger");
         }
 
-        // Suara 4 pas gesture trigger preset (SKIP kalo lagi preview foto)
         if (!isCountingDownRef.current && !previewPhotoRef.current && s.preset_seq > prev.preset) {
           playSound("4");
           if (typeof s.current_preset === 'number') {
@@ -312,7 +548,6 @@ function SesiFotoContent() {
           }
         }
 
-        // Robot DONE → countdown 3-2-1 → jepret (SKIP kalo lagi preview)
         if (s.done_seq > prev.done && !isCountingDownRef.current && !previewPhotoRef.current) {
           startSession();
         }
@@ -327,7 +562,6 @@ function SesiFotoContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCameraActive]);
 
-  // ===== COUNTDOWN 3,2,1 (+ hitungan) → JEPRET =====
   const startSession = () => {
     if (isCountingDownRef.current) return;
     if (DEBUG_STATE) console.log("⏱️ [COUNTDOWN] mulai 3-2-1");
@@ -375,7 +609,6 @@ function SesiFotoContent() {
         return;
       }
 
-      // 🎯 Simulasi 3:2 crop kayak Canon DSLR
       const targetAspect = CAPTURE_ASPECT;
       const srcW = video.videoWidth;
       const srcH = video.videoHeight;
@@ -397,7 +630,6 @@ function SesiFotoContent() {
       ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
       const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
 
-      // 🎯 Show preview instant dari dataUrl (webcam mode)
       showPreview(dataUrl);
 
       const res = await fetch(`${BACKEND_URL}/api/photo-session/${session.id}/capture-upload`, {
@@ -441,8 +673,6 @@ function SesiFotoContent() {
         console.log(isDummy ? "🧪 DUMMY Jepret!" : "📸 DSLR Jepret!", data);
         if (data.total_photos !== undefined) setFotoDiambil(data.total_photos);
 
-        // 🎯 Show preview foto DSLR/dummy yang barusan diambil
-        // Coba beberapa field response yang mungkin dipakai backend
         const photoPath = data.photo_url
           || data.photo_path
           || data.photo?.photo_path
@@ -487,42 +717,6 @@ function SesiFotoContent() {
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  const GestureCard = ({ n, isStart, isActive }: { n: number; isStart?: boolean; isActive?: boolean }) => {
-    const [imgFailed, setImgFailed] = useState(false);
-    const imgName = NUMBER_NAMES[n];
-    return (
-      <div
-        className={`
-          w-[80px] h-[80px] rounded-[10px] flex items-center justify-center relative
-          transition-all shadow-md p-1
-          ${isStart
-            ? `bg-[#3A9F86] border-[3px] border-white shadow-[0_4px_10px_rgba(58,159,134,0.5)] ${startTriggered ? 'animate-pulse-scale ring-4 ring-[#3A9F86]/40' : ''}`
-            : isActive
-              ? 'bg-[#3A9F86] border-[3px] border-white shadow-[0_0_12px_rgba(58,159,134,0.6)] scale-110'
-              : 'bg-[#5A8073] border border-[#808080]'
-          }
-        `}
-      >
-        {!imgFailed ? (
-          <img
-            src={`/${imgName}.png`}
-            alt={`Gesture ${n} (${imgName})`}
-            className="w-full h-full object-contain"
-            onError={() => setImgFailed(true)}
-            draggable={false}
-          />
-        ) : (
-          <span
-            className="font-inter font-black text-white tracking-tight"
-            style={{ fontSize: '40px', textShadow: '0 2px 4px rgba(0,0,0,0.35)' }}
-          >
-            {n}
-          </span>
-        )}
-      </div>
-    );
-  };
-
   if (loadingSession) {
     return (
       <main className="relative flex min-h-screen flex-col items-center justify-center" style={{ backgroundColor: "#E3D5D5" }}>
@@ -552,6 +746,7 @@ function SesiFotoContent() {
         <div className="h-full flex-grow" style={{ background: "linear-gradient(90deg, #151515 0%, #252525 100%)", transform: "matrix(-1, 0, 0, 1, 0, 0)" }}></div>
       </div>
 
+      {/* HEADER — badge foto diambil pindahin ke sini */}
       <header className="w-full h-[80px] bg-white border-b-[1.5px] border-[#54868A] flex items-center justify-between px-8 shrink-0">
         <div className="flex items-center gap-4">
           <div className="w-[44px] h-[44px] bg-[#3F9C9B] border-[2px] border-[#235757] rounded-full flex items-center justify-center shadow-inner shrink-0">
@@ -573,6 +768,14 @@ function SesiFotoContent() {
             </div>
           )}
 
+          {/* 📸 Badge foto diambil — pindahan dari camera area */}
+          <div className="h-[40px] bg-[#EAEAEA] border border-[#54868A] rounded-[28px] flex items-center px-4 gap-2 shadow-inner">
+            <span className="text-[16px]">📸</span>
+            <span className="font-hind font-semibold text-[16px] text-[#2E8040] tracking-[-0.05em]">
+              {fotoDiambil} foto diambil
+            </span>
+          </div>
+
           <div className="w-[194px] h-[40px] bg-[#EAEAEA] border border-[#379AA1] rounded-[28px] flex items-center px-4 justify-between shadow-inner">
             <div className={`w-[18px] h-[18px] rounded-full shrink-0 ${isCameraActive ? "bg-[#40FF00] shadow-[0_0_8px_#40FF00]" : "bg-[#4B8C86]"}`}></div>
             <span className="font-hind font-semibold text-[18px] text-[#2B6E6A] tracking-[-0.08em] text-right">
@@ -592,148 +795,62 @@ function SesiFotoContent() {
         </div>
       </header>
 
-      <div ref={cameraContainerRef} className="flex-1 relative overflow-hidden" style={{ background: 'linear-gradient(180deg, #232323 0%, #344A41 100%)' }}>
+      {/* MAIN CONTENT: LEFT (camera preview extend ke sidebar) + RIGHT (detection panel) */}
+      <div className="flex-1 flex overflow-hidden">
 
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 max-w-[900px] h-[46px] bg-white border-[1.5px] border-[#54868A] rounded-[39px] flex items-center justify-center px-6 shadow-md">
-          <span className="font-hind font-semibold text-[18px] text-[#303030] text-center tracking-tight">
-            Jaga Jarak aman dari pergerakan lengan robot. Panduan lengkap ada di layar eksternal.
-          </span>
-        </div>
+        {/* LEFT: Camera Preview — padding kiri/atas/bawah, kanan nempel sidebar */}
+        <div className="flex-1 pl-5 pt-5 pb-5 flex overflow-hidden" style={{ backgroundColor: '#E3D5D5' }}>
+          <div
+            ref={cameraContainerRef}
+            className="w-full h-full relative overflow-hidden rounded-[20px] shadow-[0_10px_40px_rgba(0,0,0,0.25)] border-[3px] border-[#54868A]"
+            style={{ background: 'linear-gradient(180deg, #232323 0%, #344A41 100%)' }}
+          >
+            {simMode ? (
+              <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+            ) : (
+              <img
+                ref={imgRef}
+                src={isCameraActive ? `${BACKEND_URL}/api/camera/stream` : undefined}
+                className={`w-full h-full object-cover transition-opacity duration-300 ${isCameraActive ? "opacity-100" : "opacity-0"}`}
+                crossOrigin="anonymous"
+                alt="Live View DSLR"
+              />
+            )}
 
-        <div className="absolute top-4 right-4 z-20 bg-white/95 border-[1.5px] border-[#54868A] px-4 py-1.5 rounded-full shadow-md">
-          <span className="font-hind font-semibold text-[18px] text-[#2E8040] tracking-[-0.05em]">
-            📸 {fotoDiambil} foto diambil
-          </span>
-        </div>
-
-        {simMode ? (
-          <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
-        ) : (
-          <img
-            ref={imgRef}
-            src={isCameraActive ? `${BACKEND_URL}/api/camera/stream` : undefined}
-            className={`w-full h-full object-cover transition-opacity duration-300 ${isCameraActive ? "opacity-100" : "opacity-0"}`}
-            crossOrigin="anonymous"
-            alt="Live View DSLR"
-          />
-        )}
-
-        {(() => {
-          const sideStripPercent = containerAspect > CAPTURE_ASPECT
-            ? ((1 - CAPTURE_ASPECT / containerAspect) / 2) * 100
-            : 0;
-          if (sideStripPercent < 0.5) return null;
-
-          const stripStyle: React.CSSProperties = {
-            width: `${sideStripPercent}%`,
-            backdropFilter: 'blur(10px)',
-            WebkitBackdropFilter: 'blur(10px)',
-            backgroundColor: 'rgba(15, 25, 25, 0.55)',
-          };
-          return (
-            <>
-              <div
-                className="absolute top-0 left-0 h-full pointer-events-none z-[5]"
-                style={{ ...stripStyle, borderRight: '2px solid rgba(255, 255, 255, 0.7)', boxShadow: 'inset -4px 0 8px rgba(0,0,0,0.35)' }}
-              >
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 opacity-70">
-                </div>
+            {!isCameraActive && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center animate-pulse z-10">
+                <span className="text-[80px] mb-3">📸</span>
+                <span className="font-inter text-white/70 text-[22px] font-medium">Menyalakan kamera...</span>
               </div>
+            )}
 
-              <div
-                className="absolute top-0 right-0 h-full pointer-events-none z-[5]"
-                style={{ ...stripStyle, borderLeft: '2px solid rgba(255, 255, 255, 0.7)', boxShadow: 'inset 4px 0 8px rgba(0,0,0,0.35)' }}
-              >
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 opacity-70">
-                </div>
+            {isCountingDown && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-30">
+                <span className="text-[240px] font-black text-white drop-shadow-2xl animate-ping-once">{countdownNumber}</span>
               </div>
+            )}
 
-              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[6] pointer-events-none">
-                <div className="bg-black/60 backdrop-blur-sm border border-white/20 rounded-full px-3 py-1 shadow-md">
-                </div>
-              </div>
-            </>
-          );
-        })()}
-
-        {!isCameraActive && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center animate-pulse z-10">
-            <span className="text-[80px] mb-3">📸</span>
-            <span className="font-inter text-white/70 text-[22px] font-medium">Menyalakan kamera...</span>
-          </div>
-        )}
-
-        {isCountingDown && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-30">
-            <span className="text-[240px] font-black text-white drop-shadow-2xl animate-ping-once">{countdownNumber}</span>
-          </div>
-        )}
-
-        {/* 🎯 Preview foto setelah jepret — cuma area tengah (sesuai garis capture), no blur strips */}
-        {previewPhoto && (() => {
-          const sideStripPercent = containerAspect > CAPTURE_ASPECT
-            ? ((1 - CAPTURE_ASPECT / containerAspect) / 2) * 100
-            : 0;
-          const centerWidthPercent = 100 - (sideStripPercent * 2);
-
-          return (
-            <div className="absolute inset-0 z-[95] animate-fade-in" style={{ background: 'linear-gradient(180deg, #232323 0%, #344A41 100%)' }}>
-              {/* Foto preview — tampil cuma di area tengah (match area capture) */}
-              <div
-                className="absolute top-0 h-full"
-                style={{
-                  left: `${sideStripPercent}%`,
-                  width: `${centerWidthPercent}%`,
-                }}
-              >
+            {/* Preview foto setelah jepret */}
+            {previewPhoto && (
+              <div className="absolute inset-0 z-[95] animate-fade-in" style={{ background: 'linear-gradient(180deg, #232323 0%, #344A41 100%)' }}>
                 <img
                   src={previewPhoto}
                   alt="Hasil foto"
                   className="w-full h-full object-cover"
                 />
-                {/* Garis putih pembatas kiri-kanan (matching guide live view) */}
-                {sideStripPercent >= 0.5 && (
-                  <>
-                    <div
-                      className="absolute top-0 left-0 h-full"
-                      style={{ width: '2px', backgroundColor: 'rgba(255, 255, 255, 0.7)' }}
-                    />
-                    <div
-                      className="absolute top-0 right-0 h-full"
-                      style={{ width: '2px', backgroundColor: 'rgba(255, 255, 255, 0.7)' }}
-                    />
-                  </>
-                )}
               </div>
-            </div>
-          );
-        })()}
-      </div>
-
-      <div className="w-full h-[150px] bg-white border-t-[1.5px] border-[#54868A] flex items-stretch gap-5 px-8 py-3 shrink-0">
-
-        <div className="flex flex-col items-center justify-center gap-2 shrink-0">
-          <span className="font-hind font-bold text-[12px] text-[#3A9F86] tracking-[0.15em] uppercase">
-            ① Mulai dulu
-          </span>
-          <GestureCard n={5} isStart />
-        </div>
-
-        <div className="flex flex-col items-center justify-center gap-1 shrink-0">
-          <div className="w-[2px] h-[30px] bg-gradient-to-b from-transparent to-[#CCCCCC]"></div>
-          <div className="text-[22px] text-[#B5B5B5] font-bold leading-none">→</div>
-          <div className="w-[2px] h-[30px] bg-gradient-to-t from-transparent to-[#CCCCCC]"></div>
-        </div>
-
-        <div className="flex-1 flex flex-col items-center justify-center gap-2">
-          <span className="font-hind font-bold text-[12px] text-[#2B6E6A] tracking-[0.15em] uppercase">
-            ② Lalu pilih preset 1-10
-          </span>
-          <div className="flex gap-2 items-center">
-            {PRESET_GESTURES.map(n => (
-              <GestureCard key={n} n={n} isActive={activePreset === n} />
-            ))}
+            )}
           </div>
+        </div>
+
+        {/* RIGHT: Gesture Detection Panel — no border kiri, continuous dengan camera */}
+        <div className="w-[400px] shrink-0 bg-[#E3D5D5] p-4 overflow-y-auto">
+          <GestureDetectionPanel
+            fsmState={fsmState}
+            unlockProgress={unlockProgress}
+            activePreset={activePreset}
+            startTriggered={startTriggered}
+          />
         </div>
       </div>
 
@@ -745,11 +862,6 @@ function SesiFotoContent() {
         .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
         @keyframes ping-once { 0% { transform: scale(1); opacity: 0; } 50% { opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
         .animate-ping-once { animation: ping-once 1s ease-out infinite; }
-        @keyframes pulse-scale {
-          0%, 100% { transform: scale(1); box-shadow: 0 4px 10px rgba(58,159,134,0.5); }
-          50% { transform: scale(1.08); box-shadow: 0 4px 20px rgba(58,159,134,0.8); }
-        }
-        .animate-pulse-scale { animation: pulse-scale 1.2s ease-in-out infinite; }
       `}</style>
     </main>
   );

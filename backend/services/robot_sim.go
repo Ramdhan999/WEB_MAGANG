@@ -22,7 +22,8 @@ import (
 // perubahan "seq" (palm/gesture/preset/done) buat mainin suara + countdown.
 // =====================================================================
 
-// ── KONFIG ────────────────────────────────────────────────────────────
+// ── KONFIG ──────────────────────────────────────────────────────────────────
+
 // URL robot Flask (lewat ngrok). Samain sama yang di main.go.
 var RobotBaseURL = "http://localhost:5001"
 
@@ -35,7 +36,8 @@ var TelapakKeywords = []string{"all fingers", "all finger", "palm", "telapak"}
 // Delay (detik) antara robot "done" sampai jepret — window buat countdown 3-2-1.
 const robotCaptureDelaySec = 3
 
-// ── STATE ─────────────────────────────────────────────────────────────
+// ── STATE ───────────────────────────────────────────────────────────────────
+
 type robotStateData struct {
 	SimEnabled    bool
 	RobotEnabled  bool
@@ -47,6 +49,14 @@ type robotStateData struct {
 	PresetSeq  int // preset terkonfirmasi      → suara 4
 	DoneSeq    int // robot selesai gerak       → countdown + jepret
 
+	// 🔒 FSM state dari Flask /detection — biar frontend tau kapan
+	// robot udah "unlocked" dan siap terima gesture preset.
+	// Value: "LOCKED" | "UNLOCKING" | "UNLOCKED" | "CONFIRMING" | "MOVING" | "COOLDOWN"
+	FsmState string
+
+	// 📊 Progress unlock (0.0 - 1.0) — user tahan telapak berapa % dari threshold
+	UnlockProgress float64
+
 	AutoCaptureAt time.Time
 }
 
@@ -55,16 +65,12 @@ var robotState = struct {
 	d  robotStateData
 }{}
 
-// ── SETTERS ───────────────────────────────────────────────────────────
+// ── SETTERS ─────────────────────────────────────────────────────────────────
 
 func SimSetEnabled(on bool) {
 	robotState.mu.Lock()
 	defer robotState.mu.Unlock()
 	robotState.d.SimEnabled = on
-	if !on {
-		robotState.d.CurrentPreset = 0
-		robotState.d.LastGesture = ""
-	}
 }
 
 func SimIsEnabled() bool {
@@ -85,14 +91,12 @@ func RobotIsEnabled() bool {
 	return robotState.d.RobotEnabled
 }
 
-// RobotFirePalm — telapak/5 jari kedeteksi (suara 2)
 func RobotFirePalm() {
 	robotState.mu.Lock()
 	defer robotState.mu.Unlock()
 	robotState.d.PalmSeq++
 }
 
-// RobotFireGesture — gesture kedeteksi (suara 3)
 func RobotFireGesture(name string) {
 	robotState.mu.Lock()
 	defer robotState.mu.Unlock()
@@ -100,15 +104,13 @@ func RobotFireGesture(name string) {
 	robotState.d.GestureSeq++
 }
 
-// RobotConfirmPreset — preset terkonfirmasi / robot gerak ke preset (suara 4)
-func RobotConfirmPreset(preset int) {
+func RobotConfirmPreset(n int) {
 	robotState.mu.Lock()
 	defer robotState.mu.Unlock()
-	robotState.d.CurrentPreset = preset
+	robotState.d.CurrentPreset = n
 	robotState.d.PresetSeq++
 }
 
-// RobotFireDone — robot selesai gerak → mulai window countdown (jepret)
 func RobotFireDone() {
 	robotState.mu.Lock()
 	defer robotState.mu.Unlock()
@@ -116,10 +118,21 @@ func RobotFireDone() {
 	robotState.d.AutoCaptureAt = time.Now().Add(robotCaptureDelaySec * time.Second)
 }
 
+// 🔒 SIM SETTER — untuk testing FSM tanpa Flask running
+// Bisa dipanggil via curl:
+//   Invoke-RestMethod -Uri "http://localhost:8080/api/sim/fsm?state=UNLOCKING&progress=0.5" -Method POST
+func SimSetFsm(state string, progress float64) {
+	robotState.mu.Lock()
+	defer robotState.mu.Unlock()
+	robotState.d.FsmState = state
+	robotState.d.UnlockProgress = progress
+}
+
 // RobotStateJSON — dipake handler GET /api/robot/state
 func RobotStateJSON() map[string]interface{} {
 	robotState.mu.RLock()
 	defer robotState.mu.RUnlock()
+
 	d := robotState.d
 
 	remainingMs := int64(0)
@@ -143,16 +156,21 @@ func RobotStateJSON() map[string]interface{} {
 		"done_seq":               d.DoneSeq,
 		"countdown_active":       countdownActive,
 		"countdown_remaining_ms": remainingMs,
+
+		// 🔒 FSM + unlock progress dari Flask (untuk UI feedback frontend)
+		"fsm_state":       d.FsmState,       // "LOCKED" | "UNLOCKING" | "UNLOCKED" | ...
+		"unlock_progress": d.UnlockProgress, // 0.0 - 1.0
 	}
 }
 
-// ── BACKGROUND POLLER (mode robot beneran) ────────────────────────────
+// ── BACKGROUND POLLER (mode robot beneran) ──────────────────────────────────
 // Poll /detection robot tiap 0.5 detik, terjemahin jadi event suara.
 // Cuma jalan kalau: sim OFF + robot enabled.
 //
 // Panggil sekali di main(): go services.StartRobotDetectionPoller()
 func StartRobotDetectionPoller() {
 	client := &http.Client{Timeout: 3 * time.Second}
+
 	var prevPalm bool
 	var prevGesture string
 	var prevPreset string
@@ -185,6 +203,25 @@ func StartRobotDetectionPoller() {
 		if gid, ok := d["gesture_id"].(float64); ok {
 			gestureID = int(gid)
 		}
+
+		// 🔒 FSM state + unlock progress dari Flask
+		// - fsm_state: "LOCKED" | "UNLOCKING" | "UNLOCKED" | "CONFIRMING" | "MOVING" | "COOLDOWN"
+		// - recognition_progress.arm.percent: 0-100 (progress tahan telapak)
+		fsmState, _ := d["fsm_state"].(string)
+		var unlockProgress float64
+		if recog, ok := d["recognition_progress"].(map[string]interface{}); ok {
+			if arm, ok := recog["arm"].(map[string]interface{}); ok {
+				if percent, ok := arm["percent"].(float64); ok {
+					unlockProgress = percent / 100.0 // convert % → 0.0-1.0
+				}
+			}
+		}
+
+		// Simpan ke robotState biar RobotStateJSON bisa expose ke frontend
+		robotState.mu.Lock()
+		robotState.d.FsmState = fsmState
+		robotState.d.UnlockProgress = unlockProgress
+		robotState.mu.Unlock()
 
 		// PALM / 5 JARI ("All Fingers", id=5) — rising edge
 		isPalm := handDetected && (gestureID == TelapakGestureID || matchesKeyword(gestureName, TelapakKeywords))
