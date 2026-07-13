@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { usePageSound } from "@/hooks/usePageSound";
 
 const BACKEND_URL = "http://localhost:8080";
 const DEBUG_STATE = true;
@@ -22,8 +21,8 @@ const NUMBER_NAMES: Record<number, string> = {
 // 🎯 CAPTURE AREA GUIDE
 const CAPTURE_ASPECT = 3 / 2;
 
-// 🎯 Preview foto config
-const PREVIEW_DURATION_SEC = 4;
+// 🎯 Preview foto config — 5 detik
+const PREVIEW_DURATION_SEC = 5;
 
 // 🔒 FSM state type dari backend
 type FsmStateType = "LOCKED" | "UNLOCKING" | "UNLOCKED" | "CONFIRMING" | "MOVING" | "COOLDOWN" | "";
@@ -90,7 +89,7 @@ function MiniGestureCard({
 }
 
 // ============================================================================
-// 🤖 GESTURE DETECTION PANEL — panel kanan (compact tapi gede & rapi)
+// 🤖 GESTURE DETECTION PANEL — panel kanan
 // ============================================================================
 function GestureDetectionPanel({
   fsmState,
@@ -111,7 +110,6 @@ function GestureDetectionPanel({
   const isConfirming = fsmState === "CONFIRMING";
   const isMoving = fsmState === "MOVING";
 
-  // FSM badge config
   const stateBadge = isLocked
     ? { label: "LOCKED", color: "#B84545", borderColor: "#7A2E2E", bgColor: "rgba(184,69,69,0.15)" }
     : isUnlocking
@@ -127,7 +125,7 @@ function GestureDetectionPanel({
   return (
     <div className="w-full h-full flex flex-col gap-3">
 
-      {/* SECTION 1: HEADER TITLE — gedein */}
+      {/* SECTION 1: HEADER TITLE */}
       <div className="flex items-center gap-3 shrink-0">
         <div className="w-[40px] h-[40px] rounded-full bg-[#3A9F86] border-[2px] border-[#245F55] flex items-center justify-center shadow-md shrink-0">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -145,7 +143,7 @@ function GestureDetectionPanel({
         </div>
       </div>
 
-      {/* SECTION 2: LIVE VIEW — aspect 4:3, gede */}
+      {/* SECTION 2: LIVE VIEW — MJPEG dari Flask */}
       <div className="w-full aspect-[4/3] rounded-[14px] overflow-hidden shadow-lg border-[3px] border-[#54868A] bg-[#232323] relative shrink-0">
         {!videoError ? (
           <img
@@ -180,7 +178,7 @@ function GestureDetectionPanel({
         )}
       </div>
 
-      {/* SECTION 3: FSM STATE — compact, readable */}
+      {/* SECTION 3: FSM STATE */}
       <div
         className="rounded-[12px] px-4 py-3 border-[2px] shadow-sm flex items-center justify-between shrink-0"
         style={{
@@ -202,7 +200,7 @@ function GestureDetectionPanel({
         </span>
       </div>
 
-      {/* SECTION 4: UNLOCK PROGRESS — bigger */}
+      {/* SECTION 4: UNLOCK PROGRESS */}
       <div className="bg-white rounded-[14px] p-4 border-[1.5px] border-[#D5C5B0] shadow-sm shrink-0">
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2">
@@ -227,10 +225,10 @@ function GestureDetectionPanel({
         </div>
       </div>
 
-      {/* SECTION 5: PRESET GRID — MULAI di tengah atas, grid uniform */}
+      {/* SECTION 5: PRESET GRID */}
       <div className="flex-1 bg-white rounded-[14px] p-4 border-[1.5px] border-[#D5C5B0] shadow-sm flex flex-col gap-3 min-h-0">
 
-        {/* MULAI card — center top, uniform size dengan preset */}
+        {/* MULAI card — center top */}
         <div className="flex flex-col items-center gap-1.5 shrink-0">
           <div className="w-[62px] h-[62px]">
             <MiniGestureCard n={5} isStart startTriggered={startTriggered} />
@@ -253,7 +251,7 @@ function GestureDetectionPanel({
           </span>
         </div>
 
-        {/* Preset grid 5x2 — semua card uniform size sama kayak MULAI */}
+        {/* Preset grid 5x2 */}
         <div className="grid grid-cols-5 gap-2 flex-1 content-center">
           {PRESET_GESTURES.map(n => (
             <div key={n} className="min-h-[62px]">
@@ -311,13 +309,18 @@ function SesiFotoContent() {
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastPlayedRef = useRef<{ key: string; time: number }>({ key: "", time: 0 });
 
+  // ===== FSM AUDIO FLOW TRACKING =====
+  const prevFsmStateRef = useRef<FsmStateType>("");
+  const hasPlayedIntroRef = useRef(false); // Guard: jari_mulai belum pernah main
+  const isPlayingLayarRef = useRef(false); // Guard: layar.mp3 lagi main
+
   const seqRef = useRef({ palm: 0, gesture: 0, preset: 0, done: 0, init: false });
   const simModeRef = useRef(false);
   const isCountingDownRef = useRef(false);
 
   useEffect(() => { isCountingDownRef.current = isCountingDown; }, [isCountingDown]);
-  usePageSound("/fase/layar.mp3");
 
+  // 🎯 Ukur aspect ratio kamera container
   useEffect(() => {
     if (!cameraContainerRef.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -332,12 +335,18 @@ function SesiFotoContent() {
     return () => observer.disconnect();
   }, []);
 
+  // ===== PRELOAD AUDIO =====
   useEffect(() => {
     const files: Record<string, string> = {
+      // Countdown (existing di /sounds)
       "4": "/sounds/4.mp3",
       "tiga": "/sounds/hitungan%20tiga.mp3",
       "dua": "/sounds/hitungan%20dua.mp3",
       "satu": "/sounds/hitungan%20satu.mp3",
+      // Narasi flow (di /fase)
+      "layar": "/fase/layar.mp3",
+      "jari_mulai": "/fase/jari_mulai.mp3",
+      "unlocked": "/fase/unlocked.mp3",
     };
     audioPathRef.current = files;
     const obj: Record<string, HTMLAudioElement> = {};
@@ -352,7 +361,7 @@ function SesiFotoContent() {
     audioRef.current = obj;
   }, []);
 
-  const playSound = (key: string) => {
+  const playSound = (key: string, onEnded?: () => void) => {
     const a = audioRef.current[key];
     if (!a) { console.warn("🔇 [SOUND] gak ada audio buat key:", key); return; }
 
@@ -368,16 +377,76 @@ function SesiFotoContent() {
       try { currentAudioRef.current.pause(); currentAudioRef.current.currentTime = 0; } catch (e) { }
     }
 
+    // Handler onEnded — dipanggil sekali doang
+    const handleEnded = () => {
+      if (DEBUG_STATE) console.log("🔊 [SOUND] ended:", key);
+      a.removeEventListener("ended", handleEnded);
+      if (onEnded) onEnded();
+    };
+    a.addEventListener("ended", handleEnded);
+
     try {
       a.pause();
       a.currentTime = 0;
       currentAudioRef.current = a;
       a.play()
         .then(() => { if (DEBUG_STATE) console.log("🔊 [SOUND] play:", key); })
-        .catch((e) => console.warn("🔇 [SOUND] gagal play:", key, e?.message));
+        .catch((e) => {
+          if (e?.name === "AbortError") return;
+          console.warn("🔇 [SOUND] gagal play:", key, e?.message);
+        });
     } catch (e) { console.warn("🔇 [SOUND] error:", key, e); }
   };
 
+  // 🔊 AUDIO FLOW #1: Pas page load → play layar.mp3 → chain ke jari_mulai.mp3
+  useEffect(() => {
+    if (!isCameraActive) return;
+    if (isPlayingLayarRef.current) return;
+    isPlayingLayarRef.current = true;
+
+    // Delay kecil biar audio preload settle
+    const timeout = setTimeout(() => {
+      if (DEBUG_STATE) console.log("🔊 [FLOW] Play layar.mp3");
+      playSound("layar", () => {
+        // Chain: setelah layar selesai → play jari_mulai
+        if (!hasPlayedIntroRef.current) {
+          hasPlayedIntroRef.current = true;
+          if (DEBUG_STATE) console.log("🔊 [FLOW] Chain: layar ended → play jari_mulai");
+          playSound("jari_mulai");
+        }
+      });
+    }, 300);
+
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCameraActive]);
+
+  // 🔊 AUDIO FLOW #2: FSM transition → play unlocked.mp3 + jari_mulai.mp3
+  useEffect(() => {
+    const prev = prevFsmStateRef.current;
+    const curr = fsmState;
+
+    // Transition LOCKED/UNLOCKING → UNLOCKED → play "unlocked.mp3"
+    if ((prev === "UNLOCKING" || prev === "LOCKED") && curr === "UNLOCKED") {
+      if (DEBUG_STATE) console.log("🔊 [FLOW] FSM → UNLOCKED, play unlocked.mp3");
+      playSound("unlocked");
+    }
+
+    // Transition UNLOCKED/COOLDOWN → LOCKED (setelah capture selesai) → replay jari_mulai
+    // Cek: jangan trigger pas fresh mount (prev = "" atau LOCKED awal)
+    if (prev !== "" && prev !== "LOCKED" && curr === "LOCKED") {
+      if (DEBUG_STATE) console.log("🔊 [FLOW] FSM back to LOCKED, replay jari_mulai");
+      // Delay kecil biar transition ke UI clear dulu
+      setTimeout(() => {
+        playSound("jari_mulai");
+      }, 500);
+    }
+
+    prevFsmStateRef.current = curr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fsmState]);
+
+  // 🎯 Show foto preview selama 5 detik
   const showPreview = (photoUrl: string) => {
     if (DEBUG_STATE) console.log("🖼️ [PREVIEW] show:", photoUrl);
     setPreviewPhoto(photoUrl);
@@ -403,6 +472,7 @@ function SesiFotoContent() {
     }, 1000);
   };
 
+  // ===== INIT SESSION =====
   useEffect(() => {
     const initSession = async () => {
       if (!txn) {
@@ -476,12 +546,9 @@ function SesiFotoContent() {
     return () => { stream?.getTracks().forEach((t) => t.stop()); };
   }, [simMode]);
 
-  // ⏸️ Timer PAUSE saat countdown 3-2-1 ATAU saat preview foto tampil
-  // Resume otomatis setelah preview hilang, biar gak buang waktu sesi
+  // ⏸️ Timer PAUSE saat countdown atau preview
   useEffect(() => {
     if (timeLeft <= 0) return;
-
-    // Guard: skip decrement kalo lagi countdown atau preview
     if (isCountingDown || previewPhoto) return;
 
     const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
@@ -513,6 +580,7 @@ function SesiFotoContent() {
     };
   }, []);
 
+  // ===== POLLING ROBOT STATE =====
   useEffect(() => {
     if (!isCameraActive) return;
 
@@ -746,7 +814,6 @@ function SesiFotoContent() {
         <div className="h-full flex-grow" style={{ background: "linear-gradient(90deg, #151515 0%, #252525 100%)", transform: "matrix(-1, 0, 0, 1, 0, 0)" }}></div>
       </div>
 
-      {/* HEADER — badge foto diambil pindahin ke sini */}
       <header className="w-full h-[80px] bg-white border-b-[1.5px] border-[#54868A] flex items-center justify-between px-8 shrink-0">
         <div className="flex items-center gap-4">
           <div className="w-[44px] h-[44px] bg-[#3F9C9B] border-[2px] border-[#235757] rounded-full flex items-center justify-center shadow-inner shrink-0">
@@ -768,7 +835,6 @@ function SesiFotoContent() {
             </div>
           )}
 
-          {/* 📸 Badge foto diambil — pindahan dari camera area */}
           <div className="h-[40px] bg-[#EAEAEA] border border-[#54868A] rounded-[28px] flex items-center px-4 gap-2 shadow-inner">
             <span className="text-[16px]">📸</span>
             <span className="font-hind font-semibold text-[16px] text-[#2E8040] tracking-[-0.05em]">
@@ -795,10 +861,8 @@ function SesiFotoContent() {
         </div>
       </header>
 
-      {/* MAIN CONTENT: LEFT (camera preview extend ke sidebar) + RIGHT (detection panel) */}
       <div className="flex-1 flex overflow-hidden">
 
-        {/* LEFT: Camera Preview — padding kiri/atas/bawah, kanan nempel sidebar */}
         <div className="flex-1 pl-5 pt-5 pb-5 flex overflow-hidden" style={{ backgroundColor: '#E3D5D5' }}>
           <div
             ref={cameraContainerRef}
@@ -830,7 +894,6 @@ function SesiFotoContent() {
               </div>
             )}
 
-            {/* Preview foto setelah jepret */}
             {previewPhoto && (
               <div className="absolute inset-0 z-[95] animate-fade-in" style={{ background: 'linear-gradient(180deg, #232323 0%, #344A41 100%)' }}>
                 <img
@@ -843,7 +906,6 @@ function SesiFotoContent() {
           </div>
         </div>
 
-        {/* RIGHT: Gesture Detection Panel — no border kiri, continuous dengan camera */}
         <div className="w-[400px] shrink-0 bg-[#E3D5D5] p-4 overflow-y-auto">
           <GestureDetectionPanel
             fsmState={fsmState}

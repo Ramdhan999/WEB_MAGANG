@@ -103,8 +103,6 @@ function ResultContent() {
 
   const [isSnapLoaded, setIsSnapLoaded] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
-  const [isZipping, setIsZipping] = useState(false);
-  const [zipProgress, setZipProgress] = useState(0);
 
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
   usePageSound("/fase/result.mp3");
@@ -182,7 +180,7 @@ function ResultContent() {
   // 🎯 TIMER COUNTDOWN
   useEffect(() => {
    if (timeLeft <= 0) {
-      if (printStatus === 'rendering' || printStatus === 'printing' || isPaying || isZipping) {
+      if (printStatus === 'rendering' || printStatus === 'printing' || isPaying) {
         return;
       }
       sessionStorage.clear();
@@ -195,18 +193,29 @@ function ResultContent() {
 
     const t = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
     return () => clearInterval(t);
-  }, [timeLeft, router, printStatus, isPaying, isZipping]);
+  }, [timeLeft, router, printStatus, isPaying]);
 
   // 🔊 Play sound sesuai status print
   useEffect(() => {
     if (printStatus === 'printing') {
       playEventSound("/fase/print d.mp3");
     } else if (printStatus === 'done') {
+      // 🎯 Flow baru: berhasil → 5 detik → digital.mp3 → auto-close modal ke halaman result
       playEventSound("/fase/berhasil.mp3");
 
-      setTimeout(() => {
-        playThanksOnce();
-      }, 3500);
+      const closeTimeout = setTimeout(() => {
+        // Play digital.mp3 (ngasih tau ada opsi digital)
+        playEventSound("/fase/digital.mp3");
+
+        // Reset state + close modal → user balik ke halaman result
+        setActiveModal(null);
+        setExtraCetak(0);
+        setCetakStep('options');
+        setPrintStatus('idle');
+        setPrintErrorMsg("");
+      }, 5000);
+
+      return () => clearTimeout(closeTimeout);
     }
   }, [printStatus]);
 
@@ -577,41 +586,6 @@ function ResultContent() {
     }
   };
 
-  const handleDownloadZip = async () => {
-    if (allCaptured.length === 0) {
-      alert("Belum ada foto buat di-download");
-      return;
-    }
-    setIsZipping(true);
-    setZipProgress(0);
-    try {
-      const JSZip = (await import("jszip")).default;
-      const { saveAs } = await import("file-saver");
-      const zip = new JSZip();
-      const folder = zip.folder("Glambot-Foto") || zip;
-      for (let i = 0; i < allCaptured.length; i++) {
-        const url = allCaptured[i];
-        try {
-          const resp = await fetch(url);
-          const blob = await resp.blob();
-          const ext = (url.split('.').pop() || "jpg").split('?')[0].slice(0, 4);
-          folder.file(`foto_${String(i + 1).padStart(2, '0')}.${ext}`, blob);
-        } catch (e) {
-          console.warn("Skip foto gagal fetch:", url);
-        }
-        setZipProgress(Math.round(((i + 1) / allCaptured.length) * 100));
-      }
-      const content = await zip.generateAsync({ type: "blob" });
-      saveAs(content, `Glambot-${txn}.zip`);
-    } catch (err) {
-      console.error("ZIP error:", err);
-      alert("Gagal bikin ZIP. Pastiin package jszip & file-saver udah ke-install.");
-    } finally {
-      setIsZipping(false);
-      setZipProgress(0);
-    }
-  };
-
   const closeCetakModal = () => {
     if (isPaying || printStatus === 'rendering' || printStatus === 'printing') return;
     setActiveModal(null);
@@ -968,18 +942,44 @@ function ResultContent() {
                       </div>
                     )}
 
-                    <div className="w-full flex gap-3">
-                      {printStatus === 'error' && (
-                        <button onClick={() => { setCetakStep('options'); setPrintStatus('idle'); }} className="flex-1 h-[53px] bg-white border border-[#54868A] rounded-[16px] font-inter font-bold italic text-[16px] text-[#545454] active:scale-95 hover:bg-[#F9F9F9] transition-colors shadow-sm pt-0.5">← Kembali</button>
-                      )}
-                      <button
-                        onClick={closeCetakModal}
-                        disabled={printStatus === 'rendering' || printStatus === 'printing'}
-                        className="flex-1 h-[53px] bg-[#3A9F86] rounded-[16px] border border-[#54868A] font-inter font-bold italic text-[18px] text-white active:scale-95 hover:bg-[#2E706D] transition-colors shadow-sm pt-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {(printStatus === 'rendering' || printStatus === 'printing') ? "Tunggu..." : "Tutup"}
-                      </button>
-                    </div>
+                    {/* 🎯 Tombol "Tutup" cuma tampil pas error (auto-close kalo done) */}
+                    {printStatus === 'error' && (
+                      <div className="w-full flex gap-3">
+                        <button
+                          onClick={() => { setCetakStep('options'); setPrintStatus('idle'); }}
+                          className="flex-1 h-[53px] bg-white border border-[#54868A] rounded-[16px] font-inter font-bold italic text-[16px] text-[#545454] active:scale-95 hover:bg-[#F9F9F9] transition-colors shadow-sm pt-0.5"
+                        >
+                          ← Kembali
+                        </button>
+                        <button
+                          onClick={closeCetakModal}
+                          className="flex-1 h-[53px] bg-[#3A9F86] rounded-[16px] border border-[#54868A] font-inter font-bold italic text-[18px] text-white active:scale-95 hover:bg-[#2E706D] transition-colors shadow-sm pt-0.5"
+                        >
+                          Tutup
+                        </button>
+                      </div>
+                    )}
+
+                    {/* 🎯 Rendering/Printing: tombol disabled */}
+                    {(printStatus === 'rendering' || printStatus === 'printing') && (
+                      <div className="w-full flex gap-3">
+                        <button
+                          disabled
+                          className="flex-1 h-[53px] bg-[#3A9F86] rounded-[16px] border border-[#54868A] font-inter font-bold italic text-[18px] text-white shadow-sm pt-0.5 opacity-50 cursor-not-allowed"
+                        >
+                          Tunggu...
+                        </button>
+                      </div>
+                    )}
+
+                    {/* 🎯 Done: auto-close, gak ada tombol */}
+                    {printStatus === 'done' && (
+                      <div className="w-full">
+                        <p className="font-hind text-[13px] text-[#6F6F6F] text-center italic">
+                          Menutup otomatis dalam 5 detik...
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1078,22 +1078,16 @@ function ResultContent() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={handleDownloadZip}
-                    disabled={isZipping}
-                    className="w-full h-[48px] bg-[#3A9F86] hover:bg-[#2E706D] border-[1.5px] border-[#54868A] rounded-[10px] flex items-center justify-center gap-2 transition-colors active:scale-[0.98] group disabled:opacity-60"
-                  >
-                    <span className="text-white text-xl leading-none pt-0.5">📥</span>
-                    <span className="font-inter font-bold text-[15px] text-white">
-                      {isZipping ? `Menyiapkan ZIP... ${zipProgress}%` : `Download Semua (${allCaptured.length} foto) sebagai ZIP`}
-                    </span>
-                  </button>
                 </div>
 
                 <div className="mt-4 shrink-0 w-full pt-4 border-t border-[#54868A]/30">
-                  <button onClick={() => {
-                    playEventSound("/fase/terimakasih.mp3");
-                    setActiveModal(null)} } className="w-full h-[53px] bg-white border border-[#54868A] hover:bg-red-50 rounded-[23px] flex items-center justify-center active:scale-[0.98] transition-colors">
+                  <button
+                    onClick={() => {
+                      playThanksOnce(); // 🎯 Play terimakasih dengan guard biar gak dobel
+                      setActiveModal(null);
+                    }}
+                    className="w-full h-[53px] bg-white border border-[#54868A] hover:bg-red-50 rounded-[23px] flex items-center justify-center active:scale-[0.98] transition-colors"
+                  >
                     <span className="font-inter font-bold italic text-[20px] text-[#545454] pt-0.5">Tutup</span>
                   </button>
                 </div>
