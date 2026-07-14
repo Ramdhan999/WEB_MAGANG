@@ -71,7 +71,7 @@ export default function PilihPaketPage() {
   ];
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center pt-4 pb-12 px-4 md:px-8" style={{ backgroundColor: '#E3D5D5' }}>
+    <main className="relative flex min-h-screen flex-col items-center justify-center py-8 px-4 md:px-8" style={{ backgroundColor: '#E3D5D5' }}>
 
       {/* PROGRESS BAR */}
       <div className="absolute top-0 left-0 w-full h-[12px] z-50 flex">

@@ -54,7 +54,7 @@ function TerimaKasihContent() {
 
       {/* PROGRESS BAR */}
       <div className="absolute top-0 left-0 w-full h-[12px] z-50 flex">
-        <div className="h-full w-[85%]" style={{ background: 'linear-gradient(270deg, #00FFA2 0%, #467664 99.09%)' }}></div>
+        <div className="h-full w-[65%]" style={{ background: 'linear-gradient(270deg, #00FFA2 0%, #467664 99.09%)' }}></div>
         <div className="h-full flex-grow" style={{ background: 'linear-gradient(90deg, #151515 0%, #252525 100%)', transform: 'matrix(-1, 0, 0, 1, 0, 0)' }}></div>
       </div>
 

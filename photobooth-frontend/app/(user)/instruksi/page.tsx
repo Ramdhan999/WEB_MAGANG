@@ -351,7 +351,7 @@ function InstruksiContent() {
           onClick={handleLanjut}
           disabled={!canProceed}
           className={`flex items-center justify-center gap-3 w-full sm:w-[320px] h-[60px] rounded-[23px] shadow-md transition-all ${canProceed
-            ? 'bg-[#3A9F86] border-3 border-[#E3D5D5] hover:scale-105 active:scale-95 cursor-pointer animate-pulse-subtle'
+            ? 'bg-[#3A9F86] border-3 border-[#E3D5D5] hover:scale-105 active:scale-95 cursor-pointer'
             : 'bg-[#B8B8B8] border-3 border-[#E3D5D5] cursor-not-allowed opacity-70'
             }`}
         >

@@ -21,8 +21,8 @@ const NUMBER_NAMES: Record<number, string> = {
 // 🎯 CAPTURE AREA GUIDE
 const CAPTURE_ASPECT = 3 / 2;
 
-// 🎯 Preview foto config — 5 detik
-const PREVIEW_DURATION_SEC = 5;
+// 🎯 Preview foto config 
+const PREVIEW_DURATION_SEC = 3;
 
 // 🔒 FSM state type dari backend
 type FsmStateType = "LOCKED" | "UNLOCKING" | "UNLOCKED" | "CONFIRMING" | "MOVING" | "COOLDOWN" | "";

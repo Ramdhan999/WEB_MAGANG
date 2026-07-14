@@ -197,7 +197,7 @@ function FrameContent() {
           })}
         </div>
 
-        <div className="w-full flex justify-center mb-6 h-[450px]">
+        <div className="w-full flex justify-center mb-2 h-[600px]">
           <div className="flex gap-6 w-full max-w-[1000px] h-full justify-center">
             <div
               ref={scrollContainerRef}

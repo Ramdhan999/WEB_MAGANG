@@ -603,7 +603,8 @@ function FilterStickerContent() {
         <div className="bg-white rounded-[18px] shadow-lg p-10 text-center max-w-[500px]">
           <h1 className="font-inter font-bold text-[32px] text-[#332C2C] mb-3">Gagal Memuat</h1>
           <p className="font-inter text-[16px] text-[#6F6F6F] mb-6">{errorMsg}</p>
-          <button onClick={() => router.push(txn ? `/print-preview?txn=${txn}` : "/pilih-paket")} className="bg-[#38635A] text-white px-6 py-3 rounded-full font-bold text-[16px] hover:bg-[#2c4e47] transition-colors">← Kembali</button>
+          <button onClick={() => router.push(txn ? `/print-preview?txn=${txn}` : "/pilih-paket")} 
+          className="bg-white [#38635A] text-white px-6 py-3 rounded-full font-bold text-[16px] hover:bg-[#2c4e47] transition-colors">← Kembali</button>      
         </div>
       </main>
     );

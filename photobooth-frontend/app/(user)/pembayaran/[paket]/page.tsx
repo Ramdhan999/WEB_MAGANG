@@ -110,7 +110,7 @@ export default function PembayaranPage() {
 
   return (
     <main
-      className="relative flex min-h-screen flex-col items-center pt-4 pb-12 px-4 md:px-8 selection:bg-[#75FFC3] selection:text-[#2E4F4D]"
+      className="relative flex min-h-screen flex-col items-center justify-center py-8 px-4 md:px-8 selection:bg-[#75FFC3] selection:text-[#2E4F4D]"
       style={{ backgroundColor: '#E3D5D5' }}
     >
 

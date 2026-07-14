@@ -61,7 +61,6 @@ export default function TutorialAlurPage() {
     }
   ];
 
-  // LOGIKA BARU: Kita tambahin nomor urut yang beneran ngitung berurutan di sini
   let globalCounter = 1;
   const stagesWithNumbers = mainStages.map(stage => {
     return {
@@ -69,22 +68,20 @@ export default function TutorialAlurPage() {
       subSteps: stage.subSteps.map(sub => {
         return {
           ...sub,
-          stepNumber: globalCounter++ // Ngitung urut, nggak peduli index stage-nya
+          stepNumber: globalCounter++
         };
       })
     };
   });
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center pt-4 pb-12 px-4 md:px-8 selection:bg-[#75FFC3] selection:text-[#2E4F4D]" style={{ backgroundColor: '#E3D5D5' }}>
+    <main className="relative flex min-h-screen flex-col items-center justify-center py-8 px-4 md:px-8 selection:bg-[#75FFC3] selection:text-[#2E4F4D]" style={{ backgroundColor: '#E3D5D5' }}>
       
-      {/* PROGRESS BAR */}
       <div className="absolute top-0 left-0 w-full h-[12px] z-50 flex">
         <div className="h-full w-[5%]" style={{ background: 'linear-gradient(270deg, #00FFA2 0%, #467664 99.09%)' }}></div>
         <div className="h-full flex-grow" style={{ background: 'linear-gradient(90deg, #151515 0%, #252525 100%)', transform: 'matrix(-1, 0, 0, 1, 0, 0)' }}></div>
       </div>
 
-      {/* HEADER AREA */}
       <div className="w-full max-w-[1225px] flex flex-col items-center mt-12 mb-16 z-10 text-center relative px-2">
         <p className="font-hind font-semibold text-[28px] text-[#37786D] tracking-[-0.1em] leading-none text-center mb-1">
           Panduan Singkat
@@ -97,15 +94,12 @@ export default function TutorialAlurPage() {
         </p>
       </div>
 
-      {/* GRID KARTU TAHAPAN */}
       <div className="w-full max-w-[1440px] flex flex-wrap justify-center gap-6 mb-10 z-10">
-        {/* LOGIKA BARU: pakai stagesWithNumbers yang udah dikasih stepNumber */}
         {stagesWithNumbers.map((stage, index) => (
           <div 
             key={index}
             className="flex flex-col bg-[#FDFAF4] border-[1.5px] border-[#E3D5D5] rounded-[21px] p-5 shadow-[5px_8px_29.6px_rgba(0,0,0,0.25)] hover:scale-[1.03] transition-all duration-300 relative overflow-hidden w-[339px] h-[404px]"
           >
-            {/* Banner Atas Kartu */}
             <div className="w-full h-[108px] rounded-[21px] overflow-hidden relative mb-3 flex-shrink-0 bg-[#C4C1C1]">
               <img src={stage.bgImg} className="w-full h-full object-cover" alt={stage.title} />
               
@@ -122,7 +116,6 @@ export default function TutorialAlurPage() {
               </div>
             </div>
 
-            {/* INFO JUDUL KARTU */}
             <div className="mb-2 text-center px-2 flex flex-col items-center justify-center">
               <h3 className="font-inter font-bold text-[32px] text-[#453F3F] tracking-tight leading-[39px] mb-1">{stage.title}</h3>
               <p className="font-inter font-semibold text-[15px] text-[#6F6F6F] leading-[18px] max-w-[270px]">{stage.subtitle}</p>
@@ -130,7 +123,6 @@ export default function TutorialAlurPage() {
 
             <div className="w-full h-[1px] bg-gray-200 mb-3"></div>
 
-            {/* List Sub-Langkah */}
             <div className="flex flex-col gap-3 flex-1 justify-center">
               {stage.subSteps.map((sub, subIdx) => (
                 <div key={subIdx} className="flex items-center gap-3">
@@ -138,7 +130,6 @@ export default function TutorialAlurPage() {
                     className="w-[38px] h-[38px] rounded-full flex items-center justify-center flex-shrink-0 border border-black/10 shadow-sm"
                     style={{ background: stage.accentBg }}
                   >
-                    {/* LOGIKA BARU: Tinggal panggil sub.stepNumber, nggak pake rumus ribet lagi */}
                     <span className="font-inter font-semibold text-[24px] leading-[29px] text-white">
                       {sub.stepNumber}
                     </span>
@@ -154,7 +145,6 @@ export default function TutorialAlurPage() {
         ))}
       </div>
 
-      {/* NAVIGATION BUTTONS */}
       <div className="w-full max-w-[1440px] flex flex-col items-center mt-4 z-10 relative">
         <button 
           onClick={() => router.push("/pilih-paket")} 
