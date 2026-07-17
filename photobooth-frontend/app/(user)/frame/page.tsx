@@ -268,23 +268,23 @@ function FrameContent() {
         </div>
 
        <div className="w-full flex justify-center items-center px-2 mt-auto">
-  <button
-    onClick={handleNext}
-    disabled={!selectedTemplate || isSubmitting}
-    className={`flex items-center justify-center gap-3 w-full sm:w-[370px] h-[53px] rounded-[23px] shadow-md transition-all duration-300 ${selectedTemplate && !isSubmitting ? 'bg-[#3A9F86] hover:scale-105 active:scale-95 cursor-pointer' : 'bg-gray-400 opacity-60 grayscale cursor-not-allowed'}`}
-  >
-    <span className="font-inter font-extrabold italic text-[20px] text-white tracking-[-0.06em]">
-      {isSubmitting ? "Menyimpan..." : "Atur Foto Pada Template!"}
-    </span>
-    {!isSubmitting && (
-      <div className="w-[24px] h-[24px] flex items-center justify-center rotate-180 invert">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M19 12H5M12 19l-7-7 7-7" />
-        </svg>
+        <button
+          onClick={handleNext}
+          disabled={!selectedTemplate || isSubmitting}
+          className={`flex items-center justify-center gap-3 w-full sm:w-[370px] h-[53px] border-3 border-[#E3D5D5] rounded-[23px] shadow-md transition-all ${selectedTemplate && !isSubmitting ? 'bg-[#3A9F86] hover:scale-105 active:scale-95 cursor-pointer' : 'bg-gray-400 opacity-60 grayscale cursor-not-allowed'}`}
+        >
+          <span className="font-inter font-extrabold italic text-[20px] text-white tracking-[-0.06em]">
+            {isSubmitting ? "Menyimpan..." : "Atur Foto Pada Template!"}
+          </span>
+          {!isSubmitting && (
+            <div className="w-[24px] h-[24px] flex items-center justify-center rotate-180 invert">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
+            </div>
+          )}
+        </button>
       </div>
-    )}
-  </button>
-</div>
       </div>
 
       <style jsx global>{`

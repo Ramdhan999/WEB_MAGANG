@@ -97,7 +97,7 @@ function FilterStickerContent() {
   const [activelyPanning, setActivelyPanning] = useState<number | null>(null);
   const [slotDims, setSlotDims] = useState<Record<number, { w: number; h: number }>>({});
   const slotElsRef = useRef<Record<number, HTMLDivElement>>({});
-  usePageSound("/fase/filter.mpeg");
+  usePageSound("/fase/filter.mp3");
 
   // 🎯 Drag & drop sticker dari grid ke frame
   const [draggingEmoji, setDraggingEmoji] = useState<string | null>(null);

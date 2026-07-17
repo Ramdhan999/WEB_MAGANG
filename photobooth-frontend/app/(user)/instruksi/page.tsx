@@ -179,10 +179,10 @@ function InstruksiContent() {
     },
     {
       number: 2,
-      title: "Hanya 1 Orang yang Kontrol Robot",
-      titleAccent: "1 Orang",
+      title: "Hanya 1 Tangan yang Kontrol Robot",
+      titleAccent: "1 Tangan",
       titleAccentColor: "#3A9F86",
-      description: "Tunjuk 1 orang aja untuk gesture jari. Yang lain fokus pose, biar robot gak bingung.",
+      description: "Tunjuk 1 tangan aja untuk gesture jari. Yang lain fokus pose, biar robot gak bingung.",
       color: "#3A9F86",
       colorDark: "#245F55",
       highlightKey: "rule-2" as HighlightTarget,
@@ -350,12 +350,12 @@ function InstruksiContent() {
         <button
           onClick={handleLanjut}
           disabled={!canProceed}
-          className={`flex items-center justify-center gap-3 w-full sm:w-[320px] h-[60px] rounded-[23px] shadow-md transition-all ${canProceed
+          className={`flex items-center justify-center gap-3 w-full sm:w-[320px] h-[53px] rounded-[23px] shadow-md transition-all ${canProceed
             ? 'bg-[#3A9F86] border-3 border-[#E3D5D5] hover:scale-105 active:scale-95 cursor-pointer'
             : 'bg-[#B8B8B8] border-3 border-[#E3D5D5] cursor-not-allowed opacity-70'
             }`}
         >
-          <span className="font-inter font-extrabold italic text-[22px] text-white tracking-[-0.06em]">
+          <span className="font-inter font-extrabold italic text-[20px] text-white tracking-[-0.06em]">
             {canProceed ? "Siap Mulai Foto" : `Sedang menjelaskan...`}
           </span>
           {canProceed && (

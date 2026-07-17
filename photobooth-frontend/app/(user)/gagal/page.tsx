@@ -12,7 +12,7 @@ function GagalContent() {
   const reason = searchParams.get("reason") || "error";
   const paketDipilih = searchParams.get("paket") || "premium";
 
-   usePageSound("/fase/bayar_gagal.mpeg");
+   usePageSound("/fase/bayar_gagal.mp3");
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center p-4 select-none overflow-hidden" style={{ backgroundColor: '#E3D5D5' }}>

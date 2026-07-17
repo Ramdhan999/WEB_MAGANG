@@ -13,7 +13,7 @@ function SuccessContent() {
 
   const [status, setStatus] = useState<"verifying" | "success" | "failed">("verifying");
 
-  usePageSound("/fase/bayar_berhasil.mpeg");
+  usePageSound("/fase/bayar_berhasil.mp3");
 
   // Verifikasi transaksi ke backend
   useEffect(() => {

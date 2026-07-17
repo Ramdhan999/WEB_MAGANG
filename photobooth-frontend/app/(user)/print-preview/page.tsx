@@ -105,7 +105,7 @@ function PrintReviewContent() {
   const [slotDims, setSlotDims] = useState<Record<number, { w: number; h: number }>>({});
   const slotElsRef = useRef<Record<number, HTMLDivElement>>({});
 
-  usePageSound("/fase/pilih.mpeg");
+  usePageSound("/fase/pilih.mp3");
 
   const panStateRef = useRef<{
     slotId: number;
@@ -497,12 +497,9 @@ function PrintReviewContent() {
         <div className="flex flex-col gap-3 items-center">
           <div className="flex flex-col gap-1 items-start self-stretch ml-4">
             <h2 className="font-hind font-semibold text-[24px] tracking-[-0.08em] text-[#3E8C7B] uppercase drop-shadow-md">Preview Frame</h2>
-            <p className="font-hind font-medium text-[13px] text-[#5A7470] tracking-[-0.04em] leading-tight italic">
-              ✥ Geser foto untuk mengatur posisi · cubit 2 jari (atau scroll) untuk zoom · foto selalu menutupi slot
-            </p>
           </div>
 
-          <div className="bg-white border-[1.5px] border-[#54868A] rounded-[24px] flex items-center justify-center relative shadow-sm p-4">
+          <div className="bg-white border-[1.5px] border-[#54868A] rounded-[24px] flex items-center justify-center relative shadow-sm p-4 scale-[0.95] origin-top mt-1">
             <div className="relative" style={{ width: `${dispW}px`, height: `${dispH}px` }}>
 
               <div style={overlayStyle} className="z-10">
@@ -609,7 +606,7 @@ function PrintReviewContent() {
             </div>
           </div>
 
-          <div className="w-full max-w-[420px] h-[55px] bg-white border-[1.5px] border-[#CCAE19] rounded-full flex items-center justify-center shadow-sm">
+          <div className="w-full max-w-[420px] h-[55px] bg-white border-[1.5px] border-[#CCAE19] rounded-full flex items-center justify-center shadow-sm -mt-7">
             <span className="font-hind font-semibold text-[22px] tracking-[-0.08em] text-[#FDAD00] drop-shadow-sm">
               {slots.filter(s => s.photo).length} / {slotCount} Slot foto terisi
             </span>
@@ -676,17 +673,24 @@ function PrintReviewContent() {
         </div>
       </div>
 
-      <div className="w-full grid grid-cols-3 items-center px-8 mt-10 mb-4">
+      <div className="w-full grid grid-cols-3 items-center px-8 mt-5 mb-4">
         <div className="flex justify-start">
-          <button onClick={() => router.push(`/frame?txn=${txn}`)} className="font-inter font-medium italic text-[24px] tracking-[-0.06em] text-[#0E1E1A] hover:opacity-70 transition-opacity leading-none">← KEMBALI</button>
+          <button 
+            onClick={() => router.push(`/frame?txn=${txn}`)} 
+            className="flex items-center gap-2 px-8 h-[53px] bg-white border-[1.5px] border-[#54868A] rounded-full shadow-md hover:scale-105 active:scale-95 transition-all"
+          >
+            <span className="font-inter font-bold italic text-[20px] tracking-[-0.06em] text-[#0E1E1A]">
+              ← Kembali
+            </span>
+          </button>
         </div>
         <div className="flex items-center justify-center">
           <button
             onClick={() => { sessionStorage.setItem("arranged_slots", JSON.stringify(slots)); router.push(`/filter?txn=${txn}`); }}
             disabled={!isComplete}
-            className={`flex items-center justify-center gap-3 w-full sm:w-[265px] h-[53px] rounded-[23px] shadow-md transition-all duration-300 ${isComplete ? 'bg-[#3A9F86] hover:scale-105 active:scale-95 cursor-pointer' : 'bg-gray-400 opacity-60 grayscale cursor-not-allowed'}`}
+            className={`flex items-center justify-center gap-3 w-full sm:w-[265px] h-[53px] border-[3px] border-[#E3D5D5] rounded-[23px] shadow-md transition-all ${isComplete ? 'bg-[#3A9F86] hover:scale-105 active:scale-95 cursor-pointer' : 'bg-gray-400 opacity-60 grayscale cursor-not-allowed'}`}
           >
-            <span className="font-inter font-extrabold italic text-[20px] text-white tracking-[-0.06em] leading-none pt-0.5">Filter & Stiker</span>
+            <span className="font-inter font-extrabold italic text-[20px] text-white tracking-[-0.06em]">Filter & Stiker</span>
             <div className="w-[24px] h-[24px] flex items-center justify-center rotate-180 invert">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 12H5M12 19l-7-7 7-7" />

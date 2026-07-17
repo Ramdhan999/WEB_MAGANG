@@ -8,7 +8,7 @@ export default function TutorialAlurPage() {
   const router = useRouter(); 
   const [isLoading, setIsLoading] = useState(false); 
 
-   usePageSound("/fase/tutorial_alur.mpeg");
+   usePageSound("/fase/tutorial_alur.mp3");
 
   const mainStages = [
     {
@@ -166,7 +166,7 @@ export default function TutorialAlurPage() {
             className="flex items-center gap-2 px-8 h-[53px] bg-white border-[1.5px] border-[#54868A] rounded-full shadow-md hover:scale-105 active:scale-95 transition-all"
           >
             <span className="font-inter font-bold italic text-[20px] tracking-[-0.06em] text-[#0E1E1A]">
-              ← KEMBALI
+              ← Kembali
             </span>
           </button>
         </div>
