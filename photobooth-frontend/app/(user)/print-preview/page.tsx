@@ -436,6 +436,10 @@ function PrintReviewContent() {
     panStateRef.current = null;
     pinchStateRef.current = null;
     setActivelyPanning(null);
+    // 🎯 Cegah ghost-click (synthesized mouse click) di layar sentuh dobel-toggle selectedSlot.
+    //    Tanpa ini: touchEnd nyalain X, lalu click bawaan langsung matiin lagi → X gak pernah muncul di NUC.
+    justDraggedRef.current = true;
+    setTimeout(() => { justDraggedRef.current = false; }, 400);
   };
 
   const handleSlotClick = (slot: SlotState) => {
@@ -546,7 +550,7 @@ function PrintReviewContent() {
       </div>
       <div className="flex items-center gap-2 min-w-0">
         <div className="w-[26px] h-[26px] bg-[#3A9F86] rounded-full flex items-center justify-center text-white font-bold text-[13px] shadow-sm shrink-0">5</div>
-        <span className="font-hind font-semibold text-[14px] text-[#7A5A1F] tracking-[-0.04em] leading-tight"><strong>klik ✕</strong> untuk hapus</span>
+        <span className="font-hind font-semibold text-[14px] text-[#7A5A1F] tracking-[-0.04em] leading-tight"><strong>klik foto dulu lalu klik X</strong> untuk hapus</span>
       </div>
     </div>
   </div>
@@ -630,7 +634,10 @@ function PrintReviewContent() {
                         <button
                           onMouseDown={(e) => e.stopPropagation()}
                           onClick={(e) => { e.stopPropagation(); removePhotoFromSlot(slot.id); }}
+                          onTouchStart={(e) => e.stopPropagation()}
+                          onTouchEnd={(e) => { e.stopPropagation(); e.preventDefault(); removePhotoFromSlot(slot.id); }}
                           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[44px] h-[44px] bg-red-500/95 hover:bg-red-600 rounded-full flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.4)] z-20 border-[3px] border-white animate-pop-in cursor-pointer backdrop-blur-sm"
+                          style={{ touchAction: 'none' }}
                           title="Hapus foto"
                         >
                           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
