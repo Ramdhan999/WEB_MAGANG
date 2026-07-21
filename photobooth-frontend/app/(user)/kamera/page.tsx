@@ -437,6 +437,7 @@ function SesiFotoContent() {
   // 🎥 FEED MODE TRANSITION: Auto-switch based on FSM & preview
   useEffect(() => {
     const shouldUsePhotoMode =
+      simMode ||               // 🎯 SIM ON → langsung tampil webcam/DSLR (bypass feed gesture Flask) biar bisa ngetest capture
       isCountingDown ||
       previewPhoto !== null ||
       fsmState === "MOVING";
@@ -447,7 +448,7 @@ function SesiFotoContent() {
       if (DEBUG_STATE) console.log(`🎥 [FEED] Switch mode: ${feedMode} → ${newMode}`);
       setFeedMode(newMode);
     }
-  }, [isCountingDown, previewPhoto, fsmState, feedMode]);
+  }, [isCountingDown, previewPhoto, fsmState, feedMode, simMode]);
 
   // 🎯 Show foto preview selama 5 detik
   const showPreview = (photoUrl: string) => {
@@ -927,7 +928,9 @@ function SesiFotoContent() {
 
               <div className="absolute top-4 left-4 flex items-center gap-2 px-3 py-1.5 bg-black/70 backdrop-blur-sm rounded-full">
                 <div className="w-[9px] h-[9px] rounded-full bg-[#FF3838] animate-pulse"></div>
-                <span className="font-hind font-bold text-[12px] text-white tracking-widest">SIAP FOTO</span>
+                <span className="font-hind font-bold text-[12px] text-white tracking-widest">
+                  {simMode ? "SIAP FOTO (SIMULASI WEBCAM)" : "SIAP FOTO"}
+                </span>
               </div>
             </div>
 

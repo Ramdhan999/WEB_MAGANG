@@ -1,9 +1,13 @@
 package services
 
 import (
+	"bytes"
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/draw"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"os"
@@ -109,6 +113,45 @@ func getLastLiveFrameHash() ([16]byte, bool) {
 	return liveFrameState.hash, liveFrameState.set
 }
 
+// =====================================================================
+// 🎯 FLIP HORIZONTAL (efek cermin)
+// Live view di main.go (StreamLiveView) selalu di-flip pakai flipJPEGHorizontal
+// sebelum dikirim ke frontend. Tapi hasil jepret dulu disimpan APA ADANYA,
+// jadi foto akhirnya kebalik dari live view (mirror).
+// Fungsi ini nyamain: frame yang disimpan juga di-flip sekali, biar hasil
+// jepret == live view. Logikanya sama persis kayak yang di main.go.
+// =====================================================================
+func flipCaptureHorizontal(frame []byte) []byte {
+	img, _, err := image.Decode(bytes.NewReader(frame))
+	if err != nil {
+		return frame // kalau gagal decode, balikin asli aja (jangan bikin error)
+	}
+
+	b := img.Bounds()
+	w := b.Dx()
+	h := b.Dy()
+	if w <= 1 || h <= 1 {
+		return frame
+	}
+
+	src := image.NewRGBA(b)
+	draw.Draw(src, b, img, b.Min, draw.Src)
+	dst := image.NewRGBA(b)
+
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			// balik pixel kiri ↔ kanan
+			dst.Set(x+b.Min.X, y+b.Min.Y, src.At((w-1-x)+b.Min.X, y+b.Min.Y))
+		}
+	}
+
+	var out bytes.Buffer
+	if err := jpeg.Encode(&out, dst, &jpeg.Options{Quality: 92}); err != nil {
+		return frame
+	}
+	return out.Bytes()
+}
+
 type CameraStatus struct {
 	Connected    bool   `json:"connected"`
 	CameraName   string `json:"camera_name"`
@@ -202,6 +245,10 @@ func waitForFreshFrameAfterCapture(beforeHash [16]byte, timeout time.Duration) (
 }
 
 func saveCaptureFrame(sessionDir string, frame []byte) (string, error) {
+	// 🎯 Flip dulu biar hasil jepret sama kayak live view (yg di main.go udah di-flip).
+	//    Tanpa ini foto akhirnya kebalik (mirror) dari yang keliatan di layar.
+	frame = flipCaptureHorizontal(frame)
+
 	fileName := fmt.Sprintf("dslr_%d.jpg", time.Now().UnixMilli())
 	filePath := filepath.Join(sessionDir, fileName)
 
