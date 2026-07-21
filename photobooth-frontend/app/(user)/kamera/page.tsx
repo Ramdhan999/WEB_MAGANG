@@ -17,7 +17,7 @@ const NUMBER_NAMES: Record<number, string> = {
 
 // 🎯 CAPTURE AREA GUIDE
 const CAPTURE_ASPECT = 3 / 2;
-const PREVIEW_DURATION_SEC = 5;
+const PREVIEW_DURATION_SEC = 3;
 
 // 🎯 Audio loop config
 const JARI_MULAI_GAP_MS = 5000; // Jeda antar loop jari_mulai (ms)

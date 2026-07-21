@@ -48,7 +48,7 @@ const PAN_HEADROOM = 1.15;
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
 function computeImageLayout(cw: number, ch: number, imgW: number, imgH: number, transform: PhotoTransform) {
-  const cover = Math.max(cw / imgW, ch / imgH);
+  const cover = Math.max(cw / imgW, ch / imgH) * PAN_HEADROOM; // 🎯 WAJIB dikali PAN_HEADROOM biar sama persis kayak print-preview & result → transform foto ngikut
   const z = cover * transform.zoom;
   const renderedW = imgW * z;
   const renderedH = imgH * z;
