@@ -96,6 +96,7 @@ function PrintReviewContent() {
 
   const [draggingPhoto, setDraggingPhoto] = useState<string | null>(null);
   const [dragOverSlot, setDragOverSlot] = useState<number | null>(null);
+  const [touchGhost, setTouchGhost] = useState<{ photo: string; x: number; y: number } | null>(null); // 🎯 preview foto yg lagi di-drag di layar sentuh
 
   const [activelyPanning, setActivelyPanning] = useState<number | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
@@ -122,6 +123,10 @@ function PrintReviewContent() {
     startDist: number;
     baseZoom: number;
   } | null>(null);
+
+  // 🎯 State buat drag-drop di layar sentuh (NUC) — HTML5 drag native gak jalan di touch
+  const touchDragRef = useRef<{ photo: string; startX: number; startY: number; active: boolean } | null>(null);
+  const galleryDraggedRef = useRef(false);
 
   const justDraggedRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -283,6 +288,61 @@ function PrintReviewContent() {
     setSelectedSlot(null);
   };
 
+  // 🎯 ============ TOUCH DRAG-DROP (buat layar sentuh / NUC) ============
+  // HTML5 native drag (draggable/onDragStart/onDrop) TIDAK jalan di touchscreen,
+  // jadi kita bikin manual pakai touch event + elementFromPoint.
+  const findSlotIdAtPoint = (x: number, y: number): number | null => {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    const slotEl = el?.closest('[data-slot-id]') as HTMLElement | null;
+    if (!slotEl) return null;
+    const id = Number(slotEl.dataset.slotId);
+    return id || null;
+  };
+
+  const handlePhotoTouchStart = (e: React.TouchEvent, photo: string) => {
+    const t = e.touches[0];
+    touchDragRef.current = { photo, startX: t.clientX, startY: t.clientY, active: false };
+  };
+
+  const handlePhotoTouchMove = (e: React.TouchEvent) => {
+    const st = touchDragRef.current;
+    if (!st) return;
+    const t = e.touches[0];
+    const dx = t.clientX - st.startX;
+    const dy = t.clientY - st.startY;
+    if (!st.active) {
+      if (Math.abs(dx) > MOVE_THRESHOLD || Math.abs(dy) > MOVE_THRESHOLD) {
+        st.active = true;
+        setDraggingPhoto(st.photo);
+      } else {
+        return;
+      }
+    }
+    e.preventDefault(); // 🎯 stop halaman ke-scroll pas lagi nge-drag di layar sentuh
+    setTouchGhost({ photo: st.photo, x: t.clientX, y: t.clientY });
+    setDragOverSlot(findSlotIdAtPoint(t.clientX, t.clientY));
+  };
+
+  const handlePhotoTouchEnd = (e: React.TouchEvent) => {
+    const st = touchDragRef.current;
+    touchDragRef.current = null;
+    if (!st || !st.active) { setTouchGhost(null); return; } // cuma tap → biarin onClick buka preview
+    const t = e.changedTouches[0];
+    const slotId = findSlotIdAtPoint(t.clientX, t.clientY);
+    if (slotId !== null) {
+      setSlots(prev => prev.map(s =>
+        s.id === slotId ? { ...s, photo: st.photo, transform: { ...DEFAULT_TRANSFORM }, imgW: undefined, imgH: undefined } : s
+      ));
+      setSelectedSlot(null);
+    }
+    galleryDraggedRef.current = true; // cegah onClick (preview) nyala habis drag
+    setTimeout(() => { galleryDraggedRef.current = false; }, 100);
+    setDraggingPhoto(null);
+    setDragOverSlot(null);
+    setTouchGhost(null);
+  };
+  // 🎯 ===================================================================
+
   // 🎯 PAN mouse
   const handleSlotMouseDown = (e: React.MouseEvent, slot: SlotState) => {
     if (!slot.photo || !slot.imgW || !slot.imgH) return;
@@ -436,7 +496,7 @@ function PrintReviewContent() {
   if (dispH > MAX_H) { dispH = MAX_H; dispW = MAX_H * frameAspect; }
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center pt-4 pb-10 overflow-x-hidden select-none" style={{ backgroundColor: '#E3D5D5' }}>
+    <main className="relative flex h-screen flex-col items-center pt-4 pb-10 overflow-hidden select-none" style={{ backgroundColor: '#E3D5D5' }}>
 
       <div className="absolute top-0 left-0 w-full h-[12px] z-50 flex">
         <div className="h-full w-[85%]" style={{ background: 'linear-gradient(270deg, #00FFA2 0%, #467664 99.09%)' }}></div>
@@ -634,7 +694,11 @@ function PrintReviewContent() {
                         draggable
                         onDragStart={(e) => handleDragStart(e, photo)}
                         onDragEnd={handleDragEnd}
-                        onClick={() => setPreviewIndex(i)}
+                        onTouchStart={(e) => handlePhotoTouchStart(e, photo)}
+                        onTouchMove={handlePhotoTouchMove}
+                        onTouchEnd={handlePhotoTouchEnd}
+                        onClick={() => { if (galleryDraggedRef.current) return; setPreviewIndex(i); }}
+                        style={{ touchAction: 'none' }} /* 🎯 ganti ke 'pan-y' kalau galeri perlu discroll di layar sentuh */
                         className={`w-full h-full rounded-[15px] border-[2px] border-[#54868A] overflow-hidden bg-white transition-all cursor-grab active:cursor-grabbing hover:scale-105 active:scale-95 shadow-sm ${isUsed ? "opacity-90" : ""} ${isDragging ? "opacity-30 scale-95" : ""}`}
                       >
                         <img src={photo} className="w-full h-full object-cover pointer-events-none" alt="Captured" />
@@ -778,8 +842,23 @@ function PrintReviewContent() {
         </div>
       )}
 
+      {/* 🎯 Ghost preview foto yg lagi di-drag di layar sentuh — pointer-events-none WAJIB biar elementFromPoint tetap kena slot */}
+      {touchGhost && (
+        <div
+          className="fixed z-[200] pointer-events-none"
+          style={{ left: `${touchGhost.x}px`, top: `${touchGhost.y}px`, transform: 'translate(-50%, -50%)' }}
+        >
+          <img
+            src={touchGhost.photo}
+            className="w-[96px] h-[72px] object-cover rounded-[12px] border-[3px] border-[#3A9F86] shadow-2xl opacity-95"
+            alt=""
+          />
+        </div>
+      )}
+
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Hind+Vadodara:wght@400;600;700&family=Inter:ital,wght@0,500;0,700;1,800&display=swap');
+        html, body { overflow: hidden; height: 100%; overscroll-behavior: none; } /* 🎯 kunci scroll halaman (kiosk fullscreen NUC) */
         .font-hind { font-family: 'Hind Vadodara', sans-serif; }
         .font-inter { font-family: 'Inter', sans-serif; }
         .no-scrollbar::-webkit-scrollbar { display: none; }

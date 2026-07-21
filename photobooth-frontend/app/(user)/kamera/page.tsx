@@ -133,10 +133,10 @@ function SidePanel({
           </svg>
         </div>
         <div className="flex flex-col leading-none">
-          <span className="font-hind font-bold text-[12px] text-[#6F6F6F] tracking-widest uppercase">
+          <span className="font-hind font-bold text-[15px] text-[#6F6F6F] tracking-widest uppercase">
             Detection Panel
           </span>
-          <span className="font-inter font-bold text-[19px] text-[#332C2C] tracking-[-0.03em] mt-1">
+          <span className="font-inter font-bold text-[20px] text-[#332C2C] tracking-[-0.03em] mt-1">
             Kontrol Kamera
           </span>
         </div>
@@ -152,7 +152,7 @@ function SidePanel({
       >
         <div className="flex items-center gap-2.5">
           <div className="w-[10px] h-[10px] rounded-full animate-pulse" style={{ backgroundColor: stateBadge.color }}></div>
-          <span className="font-hind font-bold text-[11px] text-[#6F6F6F] tracking-widest uppercase">
+          <span className="font-hind font-bold text-[13px] text-[#6F6F6F] tracking-widest uppercase">
             State
           </span>
         </div>
@@ -169,7 +169,7 @@ function SidePanel({
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2">
             <div className="w-[7px] h-[7px] rounded-full bg-[#3A9F86]"></div>
-            <span className="font-hind font-bold text-[12px] text-[#332C2C] tracking-wider uppercase">
+            <span className="font-hind font-bold text-[15px] text-[#332C2C] tracking-wider uppercase">
               Unlock Progress
             </span>
           </div>
@@ -194,7 +194,7 @@ function SidePanel({
 
         {/* MULAI card — di dalam section, atas */}
         <div className="flex flex-col items-center gap-1.5 pb-2 border-b border-[#D5C5B0]">
-          <span className="font-hind font-bold text-[11px] text-[#3A9F86] tracking-[0.1em] uppercase leading-tight">
+          <span className="font-hind font-bold text-[13px] text-[#3A9F86] tracking-[0.1em] uppercase leading-tight">
             ① Mulai (Gesture Angka 5)
           </span>
           <div className="w-[90px] h-[90px]">
@@ -204,10 +204,10 @@ function SidePanel({
 
         {/* Header preset */}
         <div className="flex flex-col items-center gap-0.5">
-          <span className="font-hind font-bold text-[12px] text-[#2B6E6A] tracking-[0.1em] uppercase leading-tight">
+          <span className="font-hind font-bold text-[13px] text-[#2B6E6A] tracking-[0.1em] uppercase leading-tight">
             ② Pilih Preset
           </span>
-          <span className="font-hind font-semibold text-[10px] text-[#6F6F6F] tracking-wider">
+          <span className="font-hind font-semibold text-[12px] text-[#6F6F6F] tracking-wider">
             Angka 1 - 10
           </span>
         </div>

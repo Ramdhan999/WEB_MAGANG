@@ -105,6 +105,7 @@ function FilterStickerContent() {
   const dragLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const dragActiveRef = useRef<boolean>(false);
+  const pendingEmojiRef = useRef<string | null>(null); // 🎯 simpan emoji yg lagi mau di-drag, biar bisa diaktifin dari gerakan jari
 
   const panStateRef = useRef<{
     slotId: number;
@@ -414,8 +415,9 @@ function FilterStickerContent() {
 
     dragStartPosRef.current = { x: clientX, y: clientY };
     dragActiveRef.current = false;
+    pendingEmojiRef.current = emoji; // 🎯 catat emoji-nya
 
-    // Long press timer — activate drag mode kalo hold 300ms
+    // Long press timer — activate drag mode kalo hold 300ms (jalur alternatif; gerakan jari juga bisa mengaktifkan)
     dragLongPressRef.current = setTimeout(() => {
       if (dragStartPosRef.current) {
         setDraggingEmoji(emoji);
@@ -432,6 +434,7 @@ function FilterStickerContent() {
     }
     dragStartPosRef.current = null;
     dragActiveRef.current = false;
+    pendingEmojiRef.current = null;
     setDraggingEmoji(null);
     setDragPos(null);
   }, []);
@@ -442,12 +445,17 @@ function FilterStickerContent() {
     const clientX = isTouch ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
     const clientY = isTouch ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
 
-    // Kalo drag belum active (belum lewat long press), cek kalo user geser jauh → cancel drag intent
+    // 🎯 Belum active tapi jari udah geser lewat threshold → LANGSUNG mulai drag.
+    //    (dulu di sini malah cancel — itu yg bikin drag gak jalan di layar sentuh)
     if (!dragActiveRef.current && dragStartPosRef.current) {
       const dx = Math.abs(clientX - dragStartPosRef.current.x);
       const dy = Math.abs(clientY - dragStartPosRef.current.y);
       if (dx > DRAG_MOVE_THRESHOLD || dy > DRAG_MOVE_THRESHOLD) {
-        cancelStickerDrag();
+        if (dragLongPressRef.current) { clearTimeout(dragLongPressRef.current); dragLongPressRef.current = null; }
+        setDraggingEmoji(pendingEmojiRef.current);
+        dragActiveRef.current = true;
+        if (isTouch) e.preventDefault();
+        setDragPos({ x: clientX, y: clientY });
       }
       return;
     }
@@ -457,7 +465,7 @@ function FilterStickerContent() {
       if (isTouch) e.preventDefault();
       setDragPos({ x: clientX, y: clientY });
     }
-  }, [cancelStickerDrag]);
+  }, []);
 
   const onStickerGridDragEnd = useCallback((e: MouseEvent | TouchEvent) => {
     // Kalo drag gak active → tap fallback, biarin onClick fire, cukup cleanup
@@ -467,6 +475,7 @@ function FilterStickerContent() {
         dragLongPressRef.current = null;
       }
       dragStartPosRef.current = null;
+      pendingEmojiRef.current = null;
       return;
     }
 
@@ -483,8 +492,10 @@ function FilterStickerContent() {
       return;
     }
 
+    const emoji = draggingEmoji ?? pendingEmojiRef.current;
+
     // Cek apakah drop di dalam frame preview
-    if (frameRef.current && draggingEmoji) {
+    if (frameRef.current && emoji) {
       const rect = frameRef.current.getBoundingClientRect();
       const inside =
         clientX >= rect.left &&
@@ -500,7 +511,7 @@ function FilterStickerContent() {
         setIsBefore(false);
         setPlacedStickers(prev => [
           ...prev,
-          { id: Date.now(), x: xPct, y: yPct, size: 60, rotation: 0, emoji: draggingEmoji }
+          { id: Date.now(), x: xPct, y: yPct, size: 60, rotation: 0, emoji }
         ]);
       }
     }
@@ -555,21 +566,27 @@ function FilterStickerContent() {
   };
   const getFilterOpacity = () => (isBefore || selectedFilter === "ORIGINAL") ? 1 : filterIntensity / 100;
 
-  const onStartAction = (e: React.MouseEvent, s: PlacedSticker, type: "move" | "resize" | "rotate") => {
-    e.stopPropagation(); e.preventDefault();
-    dragInfo.current = { id: s.id, type, startX: e.clientX, startY: e.clientY, startSize: s.size, startLeft: s.x, startTop: s.y, startRotation: s.rotation };
+  // 🎯 onStartAction sekarang nerima mouse ATAU touch — ini yg bikin stiker bisa digerakin di NUC
+  const onStartAction = (e: React.MouseEvent | React.TouchEvent, s: PlacedSticker, type: "move" | "resize" | "rotate") => {
+    e.stopPropagation();
+    const isTouch = 'touches' in e;
+    if (!isTouch) e.preventDefault();
+    const point = isTouch ? (e as React.TouchEvent).touches[0] : (e as React.MouseEvent);
+    dragInfo.current = { id: s.id, type, startX: point.clientX, startY: point.clientY, startSize: s.size, startLeft: s.x, startTop: s.y, startRotation: s.rotation };
   };
-  const onGlobalMouseMove = useCallback((e: MouseEvent) => {
+
+  // 🎯 Perhitungan dipisah biar mouse & touch pakai rumus yg sama persis
+  const applyStickerAction = useCallback((clientX: number, clientY: number) => {
     if (!dragInfo.current || !frameRef.current) return;
     const info = dragInfo.current;
     const frameRect = frameRef.current.getBoundingClientRect();
     if (info.type === "move") {
-      const dx = ((e.clientX - info.startX) / frameRect.width) * 100;
-      const dy = ((e.clientY - info.startY) / frameRect.height) * 100;
+      const dx = ((clientX - info.startX) / frameRect.width) * 100;
+      const dy = ((clientY - info.startY) / frameRect.height) * 100;
       setPlacedStickers(prev => prev.map(s => s.id === info.id ? { ...s, x: info.startLeft + dx, y: info.startTop + dy } : s));
     } else if (info.type === "resize") {
-      const dx = e.clientX - info.startX;
-      const dy = e.clientY - info.startY;
+      const dx = clientX - info.startX;
+      const dy = clientY - info.startY;
       const newSize = Math.max(30, Math.min(150, info.startSize + Math.max(dx, dy)));
       setPlacedStickers(prev => prev.map(s => s.id === info.id ? { ...s, size: newSize } : s));
     } else if (info.type === "rotate") {
@@ -578,17 +595,34 @@ function FilterStickerContent() {
         const rect = stickerEl.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
-        const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+        const angle = Math.atan2(clientY - centerY, clientX - centerX);
         setPlacedStickers(prev => prev.map(s => s.id === info.id ? { ...s, rotation: angle * (180 / Math.PI) + 90 } : s));
       }
     }
   }, []);
-  const onGlobalMouseUp = useCallback(() => { dragInfo.current = null; }, []);
+
+  const onGlobalMouseMove = useCallback((e: MouseEvent) => applyStickerAction(e.clientX, e.clientY), [applyStickerAction]);
+  const onGlobalTouchMove = useCallback((e: TouchEvent) => {
+    if (!dragInfo.current || e.touches.length === 0) return;
+    e.preventDefault(); // 🎯 stop halaman ke-scroll pas gerakin/resize stiker di layar sentuh
+    applyStickerAction(e.touches[0].clientX, e.touches[0].clientY);
+  }, [applyStickerAction]);
+  const onGlobalPointerUp = useCallback(() => { dragInfo.current = null; }, []);
+
   useEffect(() => {
     window.addEventListener("mousemove", onGlobalMouseMove);
-    window.addEventListener("mouseup", onGlobalMouseUp);
-    return () => { window.removeEventListener("mousemove", onGlobalMouseMove); window.removeEventListener("mouseup", onGlobalMouseUp); };
-  }, [onGlobalMouseMove, onGlobalMouseUp]);
+    window.addEventListener("mouseup", onGlobalPointerUp);
+    window.addEventListener("touchmove", onGlobalTouchMove, { passive: false });
+    window.addEventListener("touchend", onGlobalPointerUp);
+    window.addEventListener("touchcancel", onGlobalPointerUp);
+    return () => {
+      window.removeEventListener("mousemove", onGlobalMouseMove);
+      window.removeEventListener("mouseup", onGlobalPointerUp);
+      window.removeEventListener("touchmove", onGlobalTouchMove);
+      window.removeEventListener("touchend", onGlobalPointerUp);
+      window.removeEventListener("touchcancel", onGlobalPointerUp);
+    };
+  }, [onGlobalMouseMove, onGlobalTouchMove, onGlobalPointerUp]);
 
   if (loading) {
     return (
@@ -743,13 +777,13 @@ function FilterStickerContent() {
 
                   <div className="absolute inset-0 z-30 pointer-events-none">
                     {!isBefore && placedStickers.map(s => (
-                      <div key={s.id} id={`sticker-${s.id}`} className="absolute pointer-events-auto select-none group" style={{ left: `${s.x}%`, top: `${s.y}%`, width: `${s.size}px`, height: `${s.size}px`, transform: `translate(-50%, -50%) rotate(${s.rotation}deg)` }}>
-                        <div className="w-full h-full border-2 border-transparent group-hover:border-[#00FFA2] flex items-center justify-center cursor-grab active:cursor-grabbing" onMouseDown={(e) => onStartAction(e, s, "move")}>
+                      <div key={s.id} id={`sticker-${s.id}`} className="absolute pointer-events-auto select-none group" style={{ left: `${s.x}%`, top: `${s.y}%`, width: `${s.size}px`, height: `${s.size}px`, transform: `translate(-50%, -50%) rotate(${s.rotation}deg)`, touchAction: 'none' }}>
+                        <div className="w-full h-full border-2 border-transparent group-hover:border-[#00FFA2] flex items-center justify-center cursor-grab active:cursor-grabbing" style={{ touchAction: 'none' }} onMouseDown={(e) => onStartAction(e, s, "move")} onTouchStart={(e) => onStartAction(e, s, "move")}>
                           {s.emoji.length > 2 ? <span style={{ fontSize: `${s.size * 0.4}px`, fontWeight: 'bold', color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{s.emoji}</span> : <span style={{ fontSize: `${s.size * 0.8}px` }}>{s.emoji}</span>}
                         </div>
-                        <div className="absolute top-[-25px] left-1/2 -translate-x-1/2 w-6 h-6 bg-[#00FFA2] rounded-full cursor-alias opacity-0 group-hover:opacity-100 flex items-center justify-center shadow-md" onMouseDown={(e) => onStartAction(e, s, "rotate")}><span className="text-[12px] text-black">⟳</span></div>
-                        <div className="absolute bottom-[-5px] right-[-5px] w-5 h-5 bg-[#00FFA2] rounded-sm cursor-nwse-resize opacity-0 group-hover:opacity-100 shadow-md" onMouseDown={(e) => onStartAction(e, s, "resize")} />
-                        <button onClick={(e) => { e.stopPropagation(); removeSticker(s.id) }} className="absolute top-[-15px] left-[-15px] w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-[12px] text-white opacity-0 group-hover:opacity-100 shadow-md">✕</button>
+                        <div className="absolute top-[-25px] left-1/2 -translate-x-1/2 w-6 h-6 bg-[#00FFA2] rounded-full cursor-alias opacity-0 group-hover:opacity-100 flex items-center justify-center shadow-md" style={{ touchAction: 'none' }} onMouseDown={(e) => onStartAction(e, s, "rotate")} onTouchStart={(e) => onStartAction(e, s, "rotate")}><span className="text-[12px] text-black">⟳</span></div>
+                        <div className="absolute bottom-[-5px] right-[-5px] w-5 h-5 bg-[#00FFA2] rounded-sm cursor-nwse-resize opacity-0 group-hover:opacity-100 shadow-md" style={{ touchAction: 'none' }} onMouseDown={(e) => onStartAction(e, s, "resize")} onTouchStart={(e) => onStartAction(e, s, "resize")} />
+                        <button onClick={(e) => { e.stopPropagation(); removeSticker(s.id) }} onTouchEnd={(e) => { e.stopPropagation(); e.preventDefault(); removeSticker(s.id) }} className="absolute top-[-15px] left-[-15px] w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-[12px] text-white opacity-0 group-hover:opacity-100 shadow-md" style={{ touchAction: 'none' }}>✕</button>
                       </div>
                     ))}
                   </div>
@@ -929,6 +963,7 @@ function FilterStickerContent() {
 
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Hind+Vadodara:wght@400;600;700&family=Inter:ital,wght@0,500;0,700;1,700&display=swap');
+        html, body { overflow: hidden; height: 100%; overscroll-behavior: none; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         @keyframes fade-in { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }

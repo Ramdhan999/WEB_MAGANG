@@ -514,8 +514,8 @@ function ResultContent() {
     setCetakStep('printing');
     await executePrint(1);
   };
-
-  const handleOpenDigital = async () => {
+const handleOpenDigital = async () => {
+    playEventSound("/fase/scan_foto.mp3");
     setActiveModal('digital');
 
     // 🎯 Fire & forget — upload frame editan ke backend buat galeri
