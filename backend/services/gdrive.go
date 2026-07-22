@@ -24,7 +24,8 @@ import (
 // Struktur per sesi:
 //   Hasil foto kamu — <txn>        (di-share "anyone with link" → reader) ← QR
 //    ├── Hasil jepretan/           (semua foto mentah dari /kamera)
-//    └── Hasil frame/              (frame final hasil edit di /result)
+//    ├── Hasil frame/              (frame final hasil edit di /result)
+//    └── Hasil live preview/       (GIF animasi dari slideshow live preview)
 //
 // Auth: OAuth2 refresh-token akun Gmail (lihat cmd/gdrive-token). Scope minimal
 // `drive.file` — app cuma bisa lihat/ubah file yang dia sendiri bikin.
@@ -40,6 +41,14 @@ const (
 	driveFolderMIME = "application/vnd.google-apps.folder"
 )
 
+// Nama subfolder per sesi. Dipakai bareng sama drive_controller (termasuk
+// buat backfill sesi lama), jadi jangan di-hardcode ulang di tempat lain.
+const (
+	FolderJepretan    = "Hasil jepretan"
+	FolderFrame       = "Hasil frame"
+	FolderLivePreview = "Hasil live preview"
+)
+
 // DriveUpload = satu file lokal yang mau di-upload + nama tampil di Drive.
 type DriveUpload struct {
 	LocalPath string // path file di disk
@@ -48,10 +57,11 @@ type DriveUpload struct {
 
 // SessionFolders = hasil bikin struktur folder 1 sesi.
 type SessionFolders struct {
-	ParentID    string // folder induk "Hasil foto kamu — <txn>"
-	WebViewLink string // link folder induk (buat QR)
-	JepretanID  string // subfolder "Hasil jepretan"
-	FrameID     string // subfolder "Hasil frame"
+	ParentID      string // folder induk "Hasil foto kamu — <txn>"
+	WebViewLink   string // link folder induk (buat QR)
+	JepretanID    string // subfolder "Hasil jepretan"
+	FrameID       string // subfolder "Hasil frame"
+	LivePreviewID string // subfolder "Hasil live preview"
 }
 
 // IsDriveEnabled true kalau kredensial OAuth Drive lengkap di env.
@@ -92,9 +102,10 @@ func DriveContext() (context.Context, context.CancelFunc) {
 // HIGH-LEVEL: bikin struktur folder 1 sesi
 // =====================================================================
 
-// CreateSessionFolders bikin folder induk (di-share publik) + 2 subfolder
-// "Hasil jepretan" & "Hasil frame". Subfolder mewarisi izin share dari induk,
-// jadi nggak perlu di-share lagi satu-satu. Dipanggil SEKALI per sesi.
+// CreateSessionFolders bikin folder induk (di-share publik) + 3 subfolder
+// "Hasil jepretan", "Hasil frame", & "Hasil live preview". Subfolder mewarisi
+// izin share dari induk, jadi nggak perlu di-share lagi satu-satu. Dipanggil
+// SEKALI per sesi.
 func CreateSessionFolders(ctx context.Context, parentName string) (*SessionFolders, error) {
 	if !IsDriveEnabled() {
 		return nil, fmt.Errorf("google drive belum dikonfigurasi")
@@ -111,21 +122,40 @@ func CreateSessionFolders(ctx context.Context, parentName string) (*SessionFolde
 		return nil, fmt.Errorf("gagal share folder induk: %w", err)
 	}
 
-	jepretanID, _, err := createDriveFolder(ctx, client, "Hasil jepretan", parentID)
+	jepretanID, _, err := createDriveFolder(ctx, client, FolderJepretan, parentID)
 	if err != nil {
-		return nil, fmt.Errorf("gagal bikin subfolder Hasil jepretan: %w", err)
+		return nil, fmt.Errorf("gagal bikin subfolder %s: %w", FolderJepretan, err)
 	}
-	frameID, _, err := createDriveFolder(ctx, client, "Hasil frame", parentID)
+	frameID, _, err := createDriveFolder(ctx, client, FolderFrame, parentID)
 	if err != nil {
-		return nil, fmt.Errorf("gagal bikin subfolder Hasil frame: %w", err)
+		return nil, fmt.Errorf("gagal bikin subfolder %s: %w", FolderFrame, err)
+	}
+	livePreviewID, _, err := createDriveFolder(ctx, client, FolderLivePreview, parentID)
+	if err != nil {
+		return nil, fmt.Errorf("gagal bikin subfolder %s: %w", FolderLivePreview, err)
 	}
 
 	return &SessionFolders{
-		ParentID:    parentID,
-		WebViewLink: link,
-		JepretanID:  jepretanID,
-		FrameID:     frameID,
+		ParentID:      parentID,
+		WebViewLink:   link,
+		JepretanID:    jepretanID,
+		FrameID:       frameID,
+		LivePreviewID: livePreviewID,
 	}, nil
+}
+
+// CreateSubfolder bikin satu subfolder di dalam folder induk yang udah ada.
+// Dipakai buat backfill sesi lama yang folder induknya dibikin sebelum
+// subfolder "Hasil live preview" ada.
+func CreateSubfolder(ctx context.Context, parentID, name string) (string, error) {
+	if !IsDriveEnabled() {
+		return "", fmt.Errorf("google drive belum dikonfigurasi")
+	}
+	if parentID == "" {
+		return "", fmt.Errorf("folder induk kosong")
+	}
+	id, _, err := createDriveFolder(ctx, driveClient(ctx), name, parentID)
+	return id, err
 }
 
 // =====================================================================

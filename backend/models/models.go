@@ -51,8 +51,9 @@ type PhotoSession struct {
 	// ─── Google Drive (upload hasil sesi) ⬅️ TAMBAH ───
 	DriveFolderID         string `gorm:"type:varchar(100)" json:"drive_folder_id"`          // ID folder induk "Hasil foto kamu — <txn>"
 	DriveURL              string `gorm:"type:varchar(255)" json:"drive_url"`                // webViewLink folder induk (dipakai buat QR)
-	DriveJepretanFolderID string `gorm:"type:varchar(100)" json:"drive_jepretan_folder_id"` // subfolder "Hasil jepretan"
-	DriveFrameFolderID    string `gorm:"type:varchar(100)" json:"drive_frame_folder_id"`    // subfolder "Hasil frame"
+	DriveJepretanFolderID    string `gorm:"type:varchar(100)" json:"drive_jepretan_folder_id"`     // subfolder "Hasil jepretan"
+	DriveFrameFolderID       string `gorm:"type:varchar(100)" json:"drive_frame_folder_id"`        // subfolder "Hasil frame"
+	DriveLivePreviewFolderID string `gorm:"type:varchar(100)" json:"drive_live_preview_folder_id"` // subfolder "Hasil live preview"
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -22,19 +24,22 @@ import (
 // Alur (opsi B):
 //  - Foto mentah tiap kali di-jepret di /kamera → EnqueueRawPhotoUpload
 //    (background). Foto PERTAMA yang masuk bakal bikin folder induk +
-//    2 subfolder sekali (ensureSessionFolders), lalu foto2 nyusul.
+//    3 subfolder sekali (ensureSessionFolders), lalu foto2 nyusul.
 //  - Frame final di /result → FinalizeDrive (upload ke "Hasil frame"),
 //    balikin drive_url buat QR.
+//  - GIF live preview di /result → FinalizeLivePreviewGIF (upload ke
+//    "Hasil live preview").
 //
 // QR di frontend ngarah ke folder induk (DriveURL) — di dalamnya udah ada
-// "Hasil jepretan" (foto mentah) + "Hasil frame" (frame final).
+// "Hasil jepretan" (foto mentah), "Hasil frame" (frame final), dan
+// "Hasil live preview" (GIF slideshow).
 // =====================================================================
 
 // ensureMu mencegah folder dibuat dobel kalau beberapa upload foto mentah jalan
 // barengan (tiap capture nge-fire goroutine sendiri).
 var ensureMu sync.Mutex
 
-// ensureSessionFolders idempotent: bikin folder induk + 2 subfolder SEKALI per
+// ensureSessionFolders idempotent: bikin folder induk + 3 subfolder SEKALI per
 // sesi lalu simpan ID + URL-nya ke DB. Kalau udah ada, langsung balikin.
 func ensureSessionFolders(txn string) (*models.PhotoSession, error) {
 	ensureMu.Lock()
@@ -45,8 +50,10 @@ func ensureSessionFolders(txn string) (*models.PhotoSession, error) {
 		return nil, fmt.Errorf("session %s gak ketemu: %w", txn, err)
 	}
 
-	// Udah pernah dibuat → pakai yang ada.
+	// Udah pernah dibuat → pakai yang ada, tapi lengkapin dulu subfolder yang
+	// belum ada (sesi yang keburu jalan sebelum fitur live preview nongol).
 	if session.DriveFolderID != "" {
+		backfillLivePreviewFolder(&session)
 		return &session, nil
 	}
 	if !services.IsDriveEnabled() {
@@ -64,10 +71,11 @@ func ensureSessionFolders(txn string) (*models.PhotoSession, error) {
 
 	// Simpan ke DB.
 	if err := database.DB.Model(&session).Updates(map[string]interface{}{
-		"drive_folder_id":          folders.ParentID,
-		"drive_url":                folders.WebViewLink,
-		"drive_jepretan_folder_id": folders.JepretanID,
-		"drive_frame_folder_id":    folders.FrameID,
+		"drive_folder_id":              folders.ParentID,
+		"drive_url":                    folders.WebViewLink,
+		"drive_jepretan_folder_id":     folders.JepretanID,
+		"drive_frame_folder_id":        folders.FrameID,
+		"drive_live_preview_folder_id": folders.LivePreviewID,
 	}).Error; err != nil {
 		log.Printf("⚠️  gagal simpan drive info (%s): %v", txn, err)
 	}
@@ -76,9 +84,34 @@ func ensureSessionFolders(txn string) (*models.PhotoSession, error) {
 	session.DriveURL = folders.WebViewLink
 	session.DriveJepretanFolderID = folders.JepretanID
 	session.DriveFrameFolderID = folders.FrameID
+	session.DriveLivePreviewFolderID = folders.LivePreviewID
 
 	log.Printf("📁 Drive folder sesi dibikin (%s): %s", txn, folders.WebViewLink)
 	return &session, nil
+}
+
+// backfillLivePreviewFolder bikin subfolder "Hasil live preview" buat sesi yang
+// folder induknya udah kebikin sebelum fitur ini ada. No-op kalau udah punya.
+// Dipanggil dari dalam ensureSessionFolders (udah kepegang ensureMu).
+func backfillLivePreviewFolder(session *models.PhotoSession) {
+	if session.DriveLivePreviewFolderID != "" || !services.IsDriveEnabled() {
+		return
+	}
+
+	ctx, cancel := services.DriveContext()
+	defer cancel()
+
+	id, err := services.CreateSubfolder(ctx, session.DriveFolderID, services.FolderLivePreview)
+	if err != nil {
+		log.Printf("⚠️  gagal bikin subfolder %q (%s): %v", services.FolderLivePreview, session.TransactionID, err)
+		return
+	}
+
+	if err := database.DB.Model(session).Update("drive_live_preview_folder_id", id).Error; err != nil {
+		log.Printf("⚠️  gagal simpan ID subfolder live preview (%s): %v", session.TransactionID, err)
+	}
+	session.DriveLivePreviewFolderID = id
+	log.Printf("📁 subfolder %q nyusul dibikin (%s)", services.FolderLivePreview, session.TransactionID)
 }
 
 // EnqueueRawPhotoUpload upload SATU foto mentah ke subfolder "Hasil jepretan"
@@ -158,6 +191,98 @@ func FinalizeDrive(c *gin.Context) {
 		"drive_url": session.DriveURL,
 		"ready":     session.DriveURL != "",
 	})
+}
+
+// FinalizeLivePreviewGIF — POST /api/photo-session/by-transaction/:txn/drive/live-preview
+// Body JSON: { "photos": ["http://localhost:8080/photos/sessions/<txn>/a.jpg", ...], "delay_ms": 500 }
+//
+// Bikin GIF animasi dari foto-foto yang tadi diputer di Live Preview (urutan &
+// kecepatannya ngikutin yang di layar), terus upload ke subfolder
+// "Hasil live preview".
+func FinalizeLivePreviewGIF(c *gin.Context) {
+	txn := c.Param("transaction_id")
+
+	var body struct {
+		Photos  []string `json:"photos"`
+		DelayMs int      `json:"delay_ms"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || len(body.Photos) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "daftar photos kosong"})
+		return
+	}
+
+	if !services.IsDriveEnabled() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "google drive belum dikonfigurasi"})
+		return
+	}
+
+	// URL foto → file di disk. Foto dummy (picsum) nggak punya file lokal, jadi
+	// otomatis ke-skip di sini.
+	var paths []string
+	for _, u := range body.Photos {
+		if p := photoURLToDiskPath(u); p != "" {
+			paths = append(paths, p)
+		}
+	}
+	if len(paths) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "nggak ada foto lokal yang bisa dijadiin GIF"})
+		return
+	}
+
+	data, err := services.BuildLivePreviewGIF(paths, body.DelayMs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bikin GIF gagal: " + err.Error()})
+		return
+	}
+
+	session, err := ensureSessionFolders(txn)
+	if err != nil || session.DriveLivePreviewFolderID == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("drive folder belum siap: %v", err)})
+		return
+	}
+
+	ctx, cancel := services.DriveContext()
+	defer cancel()
+
+	name := fmt.Sprintf("live-preview-%d.gif", time.Now().Unix())
+	if err := services.UploadBytesToFolder(ctx, session.DriveLivePreviewFolderID, name, data); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "upload GIF ke drive gagal: " + err.Error()})
+		return
+	}
+
+	log.Printf("☁️  live preview GIF → Drive (%s): %s (%d foto, %d KB)", txn, name, len(paths), len(data)/1024)
+	c.JSON(http.StatusOK, gin.H{
+		"drive_url": session.DriveURL,
+		"photos":    len(paths),
+		"size_kb":   len(data) / 1024,
+	})
+}
+
+// photoURLToDiskPath ubah URL foto (".../photos/sessions/<txn>/x.jpg") jadi path
+// file di disk. Balikin "" kalau bukan foto lokal (mis. dummy picsum).
+func photoURLToDiskPath(rawURL string) string {
+	n := strings.ReplaceAll(rawURL, "\\", "/")
+
+	i := strings.Index(n, "/photos/")
+	if i < 0 {
+		return ""
+	}
+	rel := n[i+len("/photos/"):]
+
+	if q := strings.IndexAny(rel, "?#"); q >= 0 {
+		rel = rel[:q]
+	}
+	if unescaped, err := url.PathUnescape(rel); err == nil {
+		rel = unescaped
+	}
+
+	// Clean di atas "/" biar ".." kebuang — path dari request nggak boleh
+	// nyasar keluar dari folder foto.
+	rel = strings.TrimPrefix(path.Clean("/"+rel), "/")
+	if rel == "" || rel == "." {
+		return ""
+	}
+	return filepath.Join("hasil_foto_dslr", filepath.FromSlash(rel))
 }
 
 // GetSessionDrive — GET /api/photo-session/by-transaction/:txn/drive

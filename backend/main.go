@@ -178,6 +178,8 @@ func main() {
 		// --- 🎯 ROUTE GOOGLE DRIVE (QR ke gdrive) ---
 		// Finalize: upload frame final ke subfolder "Hasil frame", balikin drive_url buat QR
 		r.POST("/api/photo-session/by-transaction/:transaction_id/drive/finalize", controllers.FinalizeDrive)
+		// Live preview: bikin GIF dari foto slideshow → subfolder "Hasil live preview"
+		r.POST("/api/photo-session/by-transaction/:transaction_id/drive/live-preview", controllers.FinalizeLivePreviewGIF)
 		// Get: ambil drive_url (buat nampilin QR duluan tanpa nunggu finalize)
 		r.GET("/api/photo-session/by-transaction/:transaction_id/drive", controllers.GetSessionDrive)
 

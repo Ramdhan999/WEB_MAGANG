@@ -114,6 +114,11 @@ function ResultContent() {
   const [frameUploadError, setFrameUploadError] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
 
+  // 🎞️ GIF live preview → subfolder Drive "Hasil live preview"
+  const [isUploadingGif, setIsUploadingGif] = useState(false);
+  const [gifUploaded, setGifUploaded] = useState(false);
+  const [gifUploadError, setGifUploadError] = useState<string | null>(null);
+
   // 🎯 Slot dimensions for cover-based rendering
   const [slotDims, setSlotDims] = useState<Record<number, { w: number; h: number }>>({});
   const slotElsRef = useRef<Record<number, HTMLDivElement>>({});
@@ -526,6 +531,8 @@ const handleOpenDigital = async () => {
 
     // 🎯 Upload frame final ke Google Drive + set driveURL buat QR
     finalizeDrive();
+    // 🎞️ Barengan: bikin GIF dari live preview (jalan paralel, gak nahan QR)
+    finalizeLivePreviewGIF();
     try {
       await fetch(`${BACKEND_URL}/api/digital/done`, {
         method: "POST",
@@ -563,6 +570,41 @@ const handleOpenDigital = async () => {
       setFrameUploadError("Gagal konek ke server");
     } finally {
       setIsUploadingFrame(false);
+    }
+  };
+
+  // 🎞️ Kirim daftar foto live preview (urutan + kecepatan sama kayak di layar)
+  // ke backend → di-render jadi GIF animasi → upload ke "Hasil live preview".
+  const finalizeLivePreviewGIF = async () => {
+    if (gifUploaded || isUploadingGif || livePreviewPhotos.length === 0) return;
+    setIsUploadingGif(true);
+    setGifUploadError(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/photo-session/by-transaction/${txn}/drive/live-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photos: livePreviewPhotos, delay_ms: speed }),
+      });
+
+      // Gin balikin 404 sebagai plain text ("404 page not found"), bukan JSON —
+      // jadi jangan langsung res.json() kalau gak mau kena SyntaxError.
+      const raw = await res.text();
+      let data: any = {};
+      try { data = raw ? JSON.parse(raw) : {}; } catch (e) { }
+
+      if (!res.ok) {
+        setGifUploadError(
+          data.error || `Server balas ${res.status} — backend udah di-restart belum?`
+        );
+        console.warn("Live preview GIF gagal:", res.status, raw.slice(0, 200));
+        return;
+      }
+      setGifUploaded(true);
+    } catch (err) {
+      console.error("Finalize live preview GIF error:", err);
+      setGifUploadError("Gagal konek ke server");
+    } finally {
+      setIsUploadingGif(false);
     }
   };
 
@@ -1013,12 +1055,12 @@ const handleOpenDigital = async () => {
                       </div>
                       <div className="flex flex-col flex-1">
                         <span className="font-inter font-bold text-[16px] text-[#332C2C] leading-tight">Scan QR ke Google Drive</span>
-                        <span className="font-hind font-semibold text-[13px] text-[#D29E38] leading-tight">Foto editan + foto mentah di HP</span>
+                        <span className="font-hind font-semibold text-[13px] text-[#D29E38] leading-tight">Foto editan + mentah + GIF di HP</span>
                       </div>
                     </div>
-                    <div className="w-[160px] h-[160px] bg-white rounded-xl shadow-md border border-[#54868A] p-3 flex items-center justify-center mb-3">
+                    <div className="w-[230px] h-[230px] bg-white rounded-xl shadow-md border border-[#54868A] p-4 flex items-center justify-center mb-3">
                       {driveURL ? (
-                        <QRCodeSVG value={driveURL} size={134} bgColor="#ffffff" fgColor="#000000" level="M" />
+                        <QRCodeSVG value={driveURL} size={196} bgColor="#ffffff" fgColor="#000000" level="M" />
                       ) : (
                         <span className="text-gray-400 text-xs text-center px-2">Menyiapkan link Drive...</span>
                       )}
@@ -1034,13 +1076,33 @@ const handleOpenDigital = async () => {
                     {frameUploaded && !isUploadingFrame && (
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-[#3A9F86]">✓</span>
-                        <span className="font-hind text-[12px] text-[#3A9F86] font-semibold">Frame editan siap di galeri</span>
+                        <span className="font-hind text-[12px] text-[#3A9F86] font-semibold">Unduhan mu sudah siap</span>
                       </div>
                     )}
                     {frameUploadError && (
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-[#D85A5A]">⚠️</span>
                         <span className="font-hind text-[12px] text-[#D85A5A]">{frameUploadError}</span>
+                      </div>
+                    )}
+
+                    {/* Status GIF live preview */}
+                    {isUploadingGif && (
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-3 h-3 border-2 border-[#D29E38] border-t-transparent rounded-full animate-spin"></div>
+                        <span className="font-hind text-[12px] text-[#D29E38]">GIF live preview lagi dibikin...</span>
+                      </div>
+                    )}
+                    {/* {gifUploaded && !isUploadingGif && (
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[#3A9F86]">✓</span>
+                        <span className="font-hind text-[12px] text-[#3A9F86] font-semibold">GIF live preview siap di galeri</span>
+                      </div>
+                    )} */}
+                    {gifUploadError && (
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[#D85A5A]">⚠️</span>
+                        <span className="font-hind text-[12px] text-[#D85A5A]">{gifUploadError}</span>
                       </div>
                     )}
 

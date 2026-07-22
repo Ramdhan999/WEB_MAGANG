@@ -46,11 +46,13 @@ function MiniGestureCard({
   n,
   isStart,
   isActive,
+  isUsed,
   startTriggered,
 }: {
   n: number;
   isStart?: boolean;
   isActive?: boolean;
+  isUsed?: boolean;
   startTriggered?: boolean;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
@@ -64,8 +66,10 @@ function MiniGestureCard({
         ${isStart
           ? `bg-[#3A9F86] border-[2px] border-white shadow-[0_2px_6px_rgba(58,159,134,0.5)] ${startTriggered ? 'ring-2 ring-[#3A9F86]/60' : ''}`
           : isActive
-            ? 'bg-[#3A9F86] border-[2px] border-white shadow-[0_0_14px_rgba(58,159,134,0.7)] scale-110'
-            : 'bg-[#5A8073] border border-[#808080]'
+            ? 'bg-[#57D6AF] border-[2px] border-[#1D5A4B] scale-110 shadow-[0_4px_0_0_#1D5A4B,0_8px_14px_rgba(29,90,75,0.5),inset_0_2px_5px_rgba(255,255,255,0.55)]'
+            : isUsed
+              ? 'bg-[#3A9F86] border-[2px] border-white shadow-[0_2px_6px_rgba(58,159,134,0.5)]'
+              : 'bg-[#48665C] border border-[#6E6E6E]'
         }
       `}
     >
@@ -97,11 +101,13 @@ function SidePanel({
   fsmState,
   unlockProgress,
   activePreset,
+  usedPresets,
   startTriggered,
 }: {
   fsmState: FsmStateType;
   unlockProgress: number;
   activePreset: number | null;
+  usedPresets: number[];
   startTriggered: boolean;
 }) {
   const isLocked = fsmState === "LOCKED" || fsmState === "";
@@ -210,13 +216,16 @@ function SidePanel({
           <span className="font-hind font-semibold text-[12px] text-[#6F6F6F] tracking-wider">
             Angka 1 - 10
           </span>
+          <span className="font-hind font-bold text-[13px] text-[#2B6E6A] tracking-[0.1em] uppercase leading-tight text-center mt-1">
+            Warna Ijo = Preset Sudah Dipakai
+          </span>
         </div>
 
         {/* Preset grid 2 kolom × 5 baris — mepet ke tengah, card lebih gede */}
         <div className="grid grid-cols-2 gap-3 max-w-[200px] mx-auto w-full">
           {PRESET_GESTURES.map(n => (
             <div key={n}>
-              <MiniGestureCard n={n} isActive={activePreset === n} />
+              <MiniGestureCard n={n} isActive={activePreset === n} isUsed={usedPresets.includes(n)} />
             </div>
           ))}
         </div>
@@ -245,6 +254,9 @@ function SesiFotoContent() {
   const [simMode, setSimMode] = useState(false);
 
   const [activePreset, setActivePreset] = useState<number | null>(null);
+  // 🟢 Preset yang udah kepake selama sesi ini — tetep ijo solid walau preset lain kepilih
+  const [usedPresets, setUsedPresets] = useState<number[]>([]);
+  const activePresetRef = useRef<number | null>(null);
   const [startTriggered, setStartTriggered] = useState(false);
 
   // 🔒 FSM state dari backend
@@ -614,8 +626,10 @@ function SesiFotoContent() {
 
         if (!isCountingDownRef.current && !previewPhotoRef.current && s.preset_seq > prev.preset) {
           playSound("4");
-          if (typeof s.current_preset === 'number') {
-            setActivePreset(s.current_preset);
+          const picked = s.current_preset;
+          if (typeof picked === 'number') {
+            setActivePreset(picked);
+            activePresetRef.current = picked;
           }
         }
 
@@ -655,10 +669,20 @@ function SesiFotoContent() {
   };
 
   const doCapture = async () => {
+    const preset = activePresetRef.current;
+
     if (simModeRef.current) {
       await captureWebcamUpload();
     } else {
       await takePhoto(false);
+    }
+
+    // 🟢 Udah kejepret → preset ini ditandain kepake (ijo solid), highlight "lagi dipilih" dilepas
+    if (typeof preset === 'number') {
+      setUsedPresets((list) => list.includes(preset) ? list : [...list, preset]);
+      setActivePreset(null);
+      activePresetRef.current = null;
+      if (DEBUG_STATE) console.log("🟢 [PRESET] ditandain kepake:", preset);
     }
   };
 
@@ -965,6 +989,7 @@ function SesiFotoContent() {
             fsmState={fsmState}
             unlockProgress={unlockProgress}
             activePreset={activePreset}
+            usedPresets={usedPresets}
             startTriggered={startTriggered}
           />
         </div>
