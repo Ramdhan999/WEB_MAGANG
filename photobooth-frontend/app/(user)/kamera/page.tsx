@@ -553,7 +553,22 @@ function SesiFotoContent() {
     let stream: MediaStream | null = null;
     (async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        // 🎯 Minta resolusi setinggi mungkin. Tanpa constraint, browser default-nya
+        //    640x480 — hasilnya pecah pas dicetak 4R & dijadiin GIF. `ideal` bikin
+        //    webcam yang cuma sanggup 720p tetep jalan (turun sendiri, gak error).
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: false,
+        });
+
+        const track = stream.getVideoTracks()[0];
+        if (track) {
+          const s = track.getSettings();
+          console.log(`🎥 [WEBCAM] resolusi didapat: ${s.width}x${s.height}`);
+        }
         if (videoRef.current) videoRef.current.srcObject = stream;
       } catch (e) {
         console.warn("Webcam gagal dibuka (sim):", e);

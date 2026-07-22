@@ -9,6 +9,7 @@ import (
 	"image/draw"
 	"image/jpeg"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,10 +18,129 @@ import (
 	"time"
 )
 
+// Timeout sengaja tetep pendek: client ini juga dipakai buat narik frame live
+// view, jadi kalau digiCamControl nyangkut, stream-nya harus cepet nyerah.
+// Narik file full-res lewat localhost cuma butuh <1 detik, jadi 8 detik aman.
 var digiCamHTTPClient = &http.Client{Timeout: 8 * time.Second}
 
 // Folder buat nyimpen hasil jepretan kamera
 const StoragePath = "./hasil_foto_dslr"
+
+// =====================================================================
+// 🎯 FULL-RES vs FRAME LIVE VIEW
+//
+// digiCamControl nyediain dua hal yang gampang ketuker:
+//   - /liveview.jpg & /preview.jpg → cuplikan stream live view. Kecil
+//     (sekitar 1000px), muncul instan.
+//   - /lastcaptured                → FILE hasil jepretan beneran dari
+//     kamera. Full-res, tapi baru ada setelah kamera nulis + transfer
+//     (1–3 detik).
+//
+// Yang disimpen HARUS yang kedua. Frame live view cuma dipakai kalau
+// file aslinya beneran nggak bisa diambil — mending foto seadanya
+// daripada sesi customer gagal total.
+// =====================================================================
+
+const (
+	// Ambang lebar buat mastiin yang keambil emang hasil jepretan, bukan
+	// frame live view. Live view ~1000px; setting JPEG terkecil Canon (S3)
+	// masih 2400px, jadi 1600 aman di tengah.
+	minCaptureWidth = 1600
+
+	// Jatah nunggu kamera selesai nulis + transfer file ke PC.
+	captureFileTimeout = 6 * time.Second
+)
+
+// lastCapturedURLs = endpoint yang ngasih file jepretan beneran.
+func lastCapturedURLs(nonce string) []string {
+	return []string{
+		digiCamBaseURL() + "/lastcaptured?_ts=" + nonce,
+		digiCamRootURL() + "/lastcaptured?_ts=" + nonce,
+	}
+}
+
+// previewFallbackURLs = endpoint cadangan, resolusinya kecil.
+func previewFallbackURLs(nonce string) []string {
+	root := digiCamRootURL()
+	return []string{
+		root + "/preview.jpg?_ts=" + nonce,
+		root + "/liveview.jpg?_ts=" + nonce,
+	}
+}
+
+// frameFingerprint = sidik jari murah buat bedain dua file. Cukup 64 KB
+// pertama — header + baris awal JPEG udah pasti beda antar jepretan, dan
+// nggak perlu nyedot file 25 MB cuma buat ngecek.
+func frameFingerprint(b []byte) [16]byte {
+	if len(b) > 64<<10 {
+		b = b[:64<<10]
+	}
+	return md5.Sum(b)
+}
+
+// lastCapturedFingerprint ambil sidik jari file jepretan yang ADA SEKARANG,
+// dipanggil sebelum shutter ditekan. Dipakai buat mastiin file yang keambil
+// setelahnya emang yang baru, bukan foto sebelumnya yang belum ketimpa.
+func lastCapturedFingerprint() [16]byte {
+	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
+	for _, u := range lastCapturedURLs(nonce) {
+		resp, err := digiCamHTTPClient.Get(u)
+		if err != nil {
+			continue
+		}
+		head, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+		resp.Body.Close() // sengaja nggak dihabisin — sisanya nggak kepake
+		if resp.StatusCode == http.StatusOK && len(head) > 0 {
+			return frameFingerprint(head)
+		}
+	}
+	return [16]byte{} // belum ada jepretan sama sekali
+}
+
+// jpegDimensions baca dimensi dari header doang, nggak decode penuh.
+func jpegDimensions(b []byte) (w, h int, err error) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(b))
+	if err != nil {
+		return 0, 0, err
+	}
+	return cfg.Width, cfg.Height, nil
+}
+
+// waitForNewCapturedFile nungguin file jepretan BARU muncul di digiCamControl.
+// Nolak file yang (a) sama kayak sebelum jepret, atau (b) resolusinya kekecilan
+// — dua-duanya nandain kita kejebak ngambil yang salah.
+func waitForNewCapturedFile(before [16]byte, timeout time.Duration) ([]byte, error) {
+	deadline := time.Now().Add(timeout)
+	attempt := 0
+	var lastErr error
+
+	for {
+		attempt++
+		nonce := fmt.Sprintf("%d_%d", time.Now().UnixNano(), attempt)
+
+		body, err := digiCamReadFirstAvailable(lastCapturedURLs(nonce))
+		switch {
+		case err != nil:
+			lastErr = err
+		case frameFingerprint(body) == before:
+			lastErr = fmt.Errorf("file belum ganti — kamera masih nulis")
+		default:
+			w, h, dErr := jpegDimensions(body)
+			if dErr != nil {
+				lastErr = fmt.Errorf("bukan JPEG valid: %w", dErr)
+			} else if w < minCaptureWidth {
+				lastErr = fmt.Errorf("cuma %dx%d, ini frame preview bukan hasil jepretan", w, h)
+			} else {
+				return body, nil
+			}
+		}
+
+		if time.Now().After(deadline) {
+			return nil, lastErr
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+}
 
 var liveFrameState = struct {
 	mu   sync.Mutex
@@ -134,14 +254,20 @@ func flipCaptureHorizontal(frame []byte) []byte {
 		return frame
 	}
 
-	src := image.NewRGBA(b)
-	draw.Draw(src, b, img, b.Min, draw.Src)
-	dst := image.NewRGBA(b)
+	// Baca/tulis langsung ke slice Pix, bukan lewat At()/Set(). Sejak yang
+	// diproses jadi file full-res (24 MP = 24 juta piksel), dua panggilan
+	// interface per piksel itu bikin tiap jepretan molor beberapa detik.
+	src := image.NewRGBA(image.Rect(0, 0, w, h))
+	draw.Draw(src, src.Bounds(), img, b.Min, draw.Src)
+	dst := image.NewRGBA(image.Rect(0, 0, w, h))
 
 	for y := 0; y < h; y++ {
+		srcRow := src.Pix[y*src.Stride : y*src.Stride+w*4]
+		dstRow := dst.Pix[y*dst.Stride : y*dst.Stride+w*4]
 		for x := 0; x < w; x++ {
 			// balik pixel kiri ↔ kanan
-			dst.Set(x+b.Min.X, y+b.Min.Y, src.At((w-1-x)+b.Min.X, y+b.Min.Y))
+			s := (w - 1 - x) * 4
+			copy(dstRow[x*4:x*4+4], srcRow[s:s+4])
 		}
 	}
 
@@ -204,10 +330,15 @@ func TriggerCapture(sessionID string) (string, error) {
 
 	root := digiCamRootURL()
 	base := digiCamBaseURL()
-	beforeHash, _ := getLastLiveFrameHash()
+
+	beforeLive, _ := getLastLiveFrameHash()
+	beforeShot := lastCapturedFingerprint()
 
 	_ = digiCamTryCommand([]string{root + "/?CMD=LiveViewWnd_Show"})
 
+	// Urutan perintah shutter sengaja nggak diubah: LiveView_Capture emang
+	// yang cocok pas jendela live view lagi kebuka, dan dia tetep ngasilin
+	// file full-res di digiCamControl.
 	if err := digiCamTryCommand([]string{
 		root + "/?CMD=LiveView_Capture",
 		root + "/?CMD=Capture",
@@ -216,7 +347,16 @@ func TriggerCapture(sessionID string) (string, error) {
 		return "", fmt.Errorf("gagal trigger kamera: %w", err)
 	}
 
-	frame, err := waitForFreshFrameAfterCapture(beforeHash, 2*time.Second)
+	// Prioritas 1 — file jepretan beneran (full-res).
+	frame, err := waitForNewCapturedFile(beforeShot, captureFileTimeout)
+	if err == nil {
+		return saveCaptureFrame(sessionDir, frame)
+	}
+	log.Printf("⚠️  [DSLR] file full-res nggak keambil (%v) — jatuh ke frame live view", err)
+
+	// Prioritas 2 — frame live view. Resolusinya jauh lebih kecil, tapi
+	// mending foto seadanya daripada sesi customer gagal total.
+	frame, err = waitForFreshFrameAfterCapture(beforeLive, 2*time.Second)
 	if err == nil {
 		return saveCaptureFrame(sessionDir, frame)
 	}
@@ -261,20 +401,29 @@ func saveCaptureFrame(sessionDir string, frame []byte) (string, error) {
 	if _, err := f.Write(frame); err != nil {
 		return "", fmt.Errorf("gagal tulis file: %w", err)
 	}
+
+	// Resolusi hasil akhir sengaja di-log: ini satu-satunya cara gampang buat
+	// tau kita dapet file full-res atau kejebak frame live view.
+	if w, h, err := jpegDimensions(frame); err == nil {
+		if w < minCaptureWidth {
+			log.Printf("⚠️  [DSLR] %s cuma %dx%d — ini frame live view, BUKAN full-res. "+
+				"Cek digiCamControl: kamera kedetek? setting simpan ke PC nyala?", fileName, w, h)
+		} else {
+			log.Printf("📸 [DSLR] %s tersimpan %dx%d (%d KB)", fileName, w, h, len(frame)/1024)
+		}
+	}
 	return filePath, nil
 }
 
 func downloadLastCaptured(sessionID, sessionDir string) (string, error) {
-	root := digiCamRootURL()
-	base := digiCamBaseURL()
 	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
 
-	body, err := digiCamReadFirstAvailable([]string{
-		root + "/liveview.jpg?_ts=" + nonce,
-		root + "/preview.jpg?_ts=" + nonce,
-		root + "/lastcaptured?_ts=" + nonce,
-		base + "/lastcaptured?_ts=" + nonce,
-	})
+	// File jepretan duluan, preview/live view baru paling belakang — dulu
+	// kebalik, jadi yang kesimpen selalu frame kecil walau file full-res-nya
+	// sebenernya udah siap.
+	urls := append(lastCapturedURLs(nonce), previewFallbackURLs(nonce)...)
+
+	body, err := digiCamReadFirstAvailable(urls)
 	if err != nil {
 		return "", fmt.Errorf("gagal download foto: %w", err)
 	}
