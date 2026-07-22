@@ -98,6 +98,7 @@ func UpsertPhotoSession(c *gin.Context) {
 		session.TemplateName = req.TemplateName
 		changed = true
 	}
+
 	if changed {
 		if err := database.DB.Save(&session).Error; err != nil {
 			c.JSON(500, gin.H{"error": "Gagal update session: " + err.Error()})
@@ -126,16 +127,18 @@ func CapturePhoto(c *gin.Context) {
 	slotNumber := int(photoCount) + 1
 
 	var urlPath string
+	var diskPath string // 🎯 path disk mentah — dipakai buat upload ke Drive (kosong kalau dummy)
 
 	if isDummy {
 		urlPath = fmt.Sprintf("https://picsum.photos/seed/%d/1200/800", time.Now().UnixNano())
 		fmt.Printf("📸 [DUMMY] Photo created: %s\n", urlPath)
 	} else {
-		diskPath, err := services.TriggerCapture(session.TransactionID)
+		dp, err := services.TriggerCapture(session.TransactionID)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "Gagal trigger kamera: " + err.Error()})
 			return
 		}
+		diskPath = dp
 		urlPath = convertDiskPathToURL(diskPath)
 	}
 
@@ -147,6 +150,12 @@ func CapturePhoto(c *gin.Context) {
 	if err := database.DB.Create(&photo).Error; err != nil {
 		c.JSON(500, gin.H{"error": "Gagal simpen photo ke DB: " + err.Error()})
 		return
+	}
+
+	// 🎯 Upload foto mentah ke Google Drive (background, non-blocking).
+	//    Skip buat dummy (nggak ada file fisik di disk).
+	if !isDummy && diskPath != "" {
+		EnqueueRawPhotoUpload(session.TransactionID, photo.ID, diskPath)
 	}
 
 	c.JSON(200, gin.H{
@@ -218,6 +227,9 @@ func CaptureUpload(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Gagal simpen photo ke DB: " + err.Error()})
 		return
 	}
+
+	// 🎯 Upload foto webcam (sim) ke Google Drive juga (background, non-blocking).
+	EnqueueRawPhotoUpload(session.TransactionID, photo.ID, diskPath)
 
 	fmt.Printf("📸 [WEBCAM] Photo saved: %s\n", diskPath)
 	c.JSON(200, gin.H{

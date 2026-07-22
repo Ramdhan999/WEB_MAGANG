@@ -108,7 +108,7 @@ function ResultContent() {
   usePageSound("/fase/result.mp3");
 
   // 🎯 Galeri QR + frame upload
-  const [galleryURL, setGalleryURL] = useState<string>("");
+  const [driveURL, setDriveURL] = useState<string>("");
   const [isUploadingFrame, setIsUploadingFrame] = useState(false);
   const [frameUploaded, setFrameUploaded] = useState(false);
   const [frameUploadError, setFrameUploadError] = useState<string | null>(null);
@@ -380,13 +380,19 @@ function ResultContent() {
 
   useEffect(() => { setCurrentIdx(0); }, [livePreviewPhotos.length]);
 
-  // 🎯 Compute gallery URL (pakai NEXT_PUBLIC_GALLERY_BASE_URL kalo di-set, else window.origin)
+  // 🎯 Ambil drive_url dari backend (folder + foto mentah udah dibikin pas /kamera)
   useEffect(() => {
-    if (typeof window === "undefined" || !txn) return;
-    const base = process.env.NEXT_PUBLIC_GALLERY_BASE_URL || window.location.origin;
-    setGalleryURL(`${base}/galeri/${txn}`);
+    if (!txn) return;
+    (async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/photo-session/by-transaction/${txn}/drive`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.drive_url) setDriveURL(data.drive_url);
+        }
+      } catch (e) { }
+    })();
   }, [txn]);
-
   // 🎯 Image onLoad → capture naturalWidth/Height
   const handleSlotImgLoad = (slotId: number, imgEl: HTMLImageElement) => {
     if (!imgEl.naturalWidth || !imgEl.naturalHeight) return;
@@ -518,8 +524,8 @@ const handleOpenDigital = async () => {
     playEventSound("/fase/scan_foto.mp3");
     setActiveModal('digital');
 
-    // 🎯 Fire & forget — upload frame editan ke backend buat galeri
-    uploadFrameToBackend();
+    // 🎯 Upload frame final ke Google Drive + set driveURL buat QR
+    finalizeDrive();
     try {
       await fetch(`${BACKEND_URL}/api/digital/done`, {
         method: "POST",
@@ -529,8 +535,8 @@ const handleOpenDigital = async () => {
     } catch (err) { }
   };
 
-  // 🎯 Upload frame editan (hasil html2canvas) ke backend buat galeri publik
-  const uploadFrameToBackend = async () => {
+  // 🎯 Render frame editan (html2canvas) → upload ke Google Drive → dapet drive_url buat QR
+  const finalizeDrive = async () => {
     if (frameUploaded || isUploadingFrame) return;
     setIsUploadingFrame(true);
     setFrameUploadError(null);
@@ -540,36 +546,37 @@ const handleOpenDigital = async () => {
         setFrameUploadError("Gagal render frame");
         return;
       }
-      const res = await fetch(`${BACKEND_URL}/api/gallery/save-frame`, {
+      const res = await fetch(`${BACKEND_URL}/api/photo-session/by-transaction/${txn}/drive/finalize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transaction_id: txn, image_base64: imageBase64 }),
+        body: JSON.stringify({ image: imageBase64 }),
       });
+      const data = await res.json();
       if (!res.ok) {
-        const err = await res.json();
-        setFrameUploadError(err.error || "Upload gagal");
+        setFrameUploadError(data.error || "Upload ke Drive gagal");
         return;
       }
+      if (data.drive_url) setDriveURL(data.drive_url);
       setFrameUploaded(true);
     } catch (err) {
-      console.error("Upload frame error:", err);
+      console.error("Finalize drive error:", err);
       setFrameUploadError("Gagal konek ke server");
     } finally {
       setIsUploadingFrame(false);
     }
   };
 
-  // 🎯 Copy galeri link ke clipboard (dengan fallback buat browser lama)
-  const copyGalleryLink = async () => {
-    if (!galleryURL) return;
+ // 🎯 Copy link Drive ke clipboard (dengan fallback buat browser lama)
+  const copyDriveLink = async () => {
+    if (!driveURL) return;
     try {
-      await navigator.clipboard.writeText(galleryURL);
+      await navigator.clipboard.writeText(driveURL);
       setLinkCopied(true);
       setTimeout(() => setLinkCopied(false), 2000);
     } catch (err) {
       // Fallback untuk browser tanpa Clipboard API
       const ta = document.createElement('textarea');
-      ta.value = galleryURL;
+      ta.value = driveURL;
       ta.style.position = 'fixed';
       ta.style.opacity = '0';
       document.body.appendChild(ta);
@@ -820,7 +827,7 @@ const handleOpenDigital = async () => {
                 </div>
                 <div className="flex-1 flex flex-col justify-center pr-8 pt-1">
                   <h3 className="font-inter font-bold text-[26px] text-[#545454] tracking-[-0.05em] leading-tight mb-0.5">Kirim Digital</h3>
-                  <p className="font-hind font-semibold text-[17px] text-[#3E8C7B] tracking-[-0.05em] leading-tight">QR Ke Web Galeri</p>
+                  <p className="font-hind font-semibold text-[17px] text-[#3E8C7B] tracking-[-0.05em] leading-tight">QR ke Google Drive</p>
                 </div>
                 <span className="absolute right-6 text-[#54868A] opacity-50 text-3xl group-hover:translate-x-2 transition-transform">→</span>
               </button>
@@ -993,7 +1000,7 @@ const handleOpenDigital = async () => {
                   </div>
                   <div className="flex flex-col items-center text-center">
                     <h2 className="font-inter font-bold text-[32px] text-[#332C2C] tracking-[-0.05em] leading-none mb-0.5">Kirim Digital</h2>
-                    <p className="font-hind font-semibold text-[20px] text-[#3E8C7B] tracking-[-0.08em] leading-none">pilih cara menerima</p>
+                    <p className="font-hind font-semibold text-[20px] text-[#3E8C7B] tracking-[-0.08em] leading-none">Google Drive</p>
                   </div>
                 </div>
 
@@ -1005,15 +1012,15 @@ const handleOpenDigital = async () => {
                         <img src="/scan.png" className="w-[22px] h-[22px]" alt="qr" />
                       </div>
                       <div className="flex flex-col flex-1">
-                        <span className="font-inter font-bold text-[16px] text-[#332C2C] leading-tight">Scan QR ke Galeri</span>
+                        <span className="font-inter font-bold text-[16px] text-[#332C2C] leading-tight">Scan QR ke Google Drive</span>
                         <span className="font-hind font-semibold text-[13px] text-[#D29E38] leading-tight">Foto editan + foto mentah di HP</span>
                       </div>
                     </div>
                     <div className="w-[160px] h-[160px] bg-white rounded-xl shadow-md border border-[#54868A] p-3 flex items-center justify-center mb-3">
-                      {galleryURL ? (
-                        <QRCodeSVG value={galleryURL} size={134} bgColor="#ffffff" fgColor="#000000" level="M" />
+                      {driveURL ? (
+                        <QRCodeSVG value={driveURL} size={134} bgColor="#ffffff" fgColor="#000000" level="M" />
                       ) : (
-                        <span className="text-gray-400 text-xs">Generating QR...</span>
+                        <span className="text-gray-400 text-xs text-center px-2">Menyiapkan link Drive...</span>
                       )}
                     </div>
 
@@ -1038,14 +1045,14 @@ const handleOpenDigital = async () => {
                     )}
 
                     {/* URL + Copy Button (kalo QR ga ke-scan, bisa copy manual) */}
-                    {galleryURL && (
+                   {driveURL && (
                       <div className="w-full flex flex-col gap-2 mt-1">
                         <div className="w-full bg-white border border-[#54868A]/30 px-3 py-2 rounded-lg flex items-center gap-2">
                           <span className="text-[14px] shrink-0">🔗</span>
-                          <p className="font-mono text-[10px] text-[#5A7470] break-all leading-tight flex-1 text-left">{galleryURL}</p>
+                          <p className="font-mono text-[10px] text-[#5A7470] break-all leading-tight flex-1 text-left">{driveURL}</p>
                         </div>
                         <button
-                          onClick={copyGalleryLink}
+                          onClick={copyDriveLink}
                           className={`w-full h-[40px] rounded-lg font-inter font-bold text-[14px] flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm border ${
                             linkCopied
                               ? "bg-[#3A9F86] text-white border-[#3A9F86]"
@@ -1065,7 +1072,7 @@ const handleOpenDigital = async () => {
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                               </svg>
-                              Salin Link Galeri
+                             Salin Link Drive
                             </>
                           )}
                         </button>

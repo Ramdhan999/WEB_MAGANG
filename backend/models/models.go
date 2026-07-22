@@ -39,17 +39,24 @@ type Transaction struct {
 }
 
 type PhotoSession struct {
-	ID              uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	TransactionID   string    `gorm:"type:varchar(50);uniqueIndex;not null" json:"transaction_id"` // Jembatan ke tabel transaksi awal
-	FrameID         string    `gorm:"type:varchar(20);not null" json:"frame_id"`                   // t1, t2, t3, t4
-	TemplateName    string    `gorm:"type:varchar(100)" json:"template_name"`                      // e.g., "Classic Strip"
-	OutputType      string    `gorm:"type:varchar(20);default:'Digital'" json:"output_type"`       // "Digital" atau "Cetak"
-	FinalFramePath  string    `gorm:"type:varchar(255)" json:"final_frame_path"`                   // Hasil grid frame final
-	ExtraPrintCount int       `gorm:"default:0" json:"extra_print_count"`
-	PaymentStatus   string    `gorm:"type:varchar(20);default:'none'" json:"payment_status"` // pending, paid, failed, cancelled
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	Photos          []Photo   `gorm:"foreignKey:SessionID;constraint:OnDelete:CASCADE;" json:"photos"` // Relasi 1 ke N tabel photos
+	ID              uint   `gorm:"primaryKey;autoIncrement" json:"id"`
+	TransactionID   string `gorm:"type:varchar(50);uniqueIndex;not null" json:"transaction_id"` // Jembatan ke tabel transaksi awal
+	FrameID         string `gorm:"type:varchar(20);not null" json:"frame_id"`                   // t1, t2, t3, t4
+	TemplateName    string `gorm:"type:varchar(100)" json:"template_name"`                      // e.g., "Classic Strip"
+	OutputType      string `gorm:"type:varchar(20);default:'Digital'" json:"output_type"`       // "Digital" atau "Cetak"
+	FinalFramePath  string `gorm:"type:varchar(255)" json:"final_frame_path"`                   // Hasil grid frame final
+	ExtraPrintCount int    `gorm:"default:0" json:"extra_print_count"`
+	PaymentStatus   string `gorm:"type:varchar(20);default:'none'" json:"payment_status"` // pending, paid, failed, cancelled
+
+	// ─── Google Drive (upload hasil sesi) ⬅️ TAMBAH ───
+	DriveFolderID         string `gorm:"type:varchar(100)" json:"drive_folder_id"`          // ID folder induk "Hasil foto kamu — <txn>"
+	DriveURL              string `gorm:"type:varchar(255)" json:"drive_url"`                // webViewLink folder induk (dipakai buat QR)
+	DriveJepretanFolderID string `gorm:"type:varchar(100)" json:"drive_jepretan_folder_id"` // subfolder "Hasil jepretan"
+	DriveFrameFolderID    string `gorm:"type:varchar(100)" json:"drive_frame_folder_id"`    // subfolder "Hasil frame"
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Photos    []Photo   `gorm:"foreignKey:SessionID;constraint:OnDelete:CASCADE;" json:"photos"` // Relasi 1 ke N tabel photos
 }
 
 // TABEL FILTER FOTO
@@ -65,11 +72,12 @@ type Filter struct {
 
 // Tabel: photos
 type Photo struct {
-	ID         uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	SessionID  uint      `gorm:"index;not null" json:"session_id"`             // FK yang nge-link ke ID di photo_sessions
-	PhotoPath  string    `gorm:"type:varchar(255);not null" json:"photo_path"` // Lokasi foto satuan dari DSLR
-	SlotNumber int       `gorm:"not null" json:"slot_number"`                  // Slot 1, 2, 3, dst
-	CreatedAt  time.Time `json:"created_at"`
+	ID            uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	SessionID     uint      `gorm:"index;not null" json:"session_id"`             // FK yang nge-link ke ID di photo_sessions
+	PhotoPath     string    `gorm:"type:varchar(255);not null" json:"photo_path"` // Lokasi foto satuan dari DSLR
+	SlotNumber    int       `gorm:"not null" json:"slot_number"`                  // Slot 1, 2, 3, dst
+	DriveUploaded bool      `gorm:"default:false" json:"drive_uploaded"`          // ⬅️ TAMBAH: udah ke-upload ke Drive apa belum
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // TABEL PENGATURAN GLOBAL (Hanya 1 baris data)

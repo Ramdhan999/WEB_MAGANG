@@ -175,6 +175,12 @@ func main() {
 		r.POST("/api/photo-session/:session_id/capture-upload", controllers.CaptureUpload)
 		r.GET("/api/photo-session/by-transaction/:transaction_id", controllers.GetSessionByTransaction)
 
+		// --- 🎯 ROUTE GOOGLE DRIVE (QR ke gdrive) ---
+		// Finalize: upload frame final ke subfolder "Hasil frame", balikin drive_url buat QR
+		r.POST("/api/photo-session/by-transaction/:transaction_id/drive/finalize", controllers.FinalizeDrive)
+		// Get: ambil drive_url (buat nampilin QR duluan tanpa nunggu finalize)
+		r.GET("/api/photo-session/by-transaction/:transaction_id/drive", controllers.GetSessionDrive)
+
 		// --- SERVE FOTO HASIL DSLR ke Next.js ---
 		r.Static("/photos", "./hasil_foto_dslr")
 
@@ -376,6 +382,9 @@ func main() {
 
 	// =====================================================================
 	// 🎯 GALLERY ROUTES (public — buat QR scan dari HP)
+	// CATATAN: sejak pindah ke Google Drive, /result nggak manggil galeri ini
+	// lagi buat QR. Route dibiarin ada biar nggak ngerusak apa-apa (bisa dihapus
+	// nanti kalau udah yakin nggak kepake).
 	// =====================================================================
 
 	// GET /api/gallery/:txn — public gallery view (no auth)
