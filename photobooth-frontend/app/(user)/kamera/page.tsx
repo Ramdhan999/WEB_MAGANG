@@ -249,13 +249,14 @@ function SesiFotoContent() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isCountingDown, setIsCountingDown] = useState(false);
   const [countdownNumber, setCountdownNumber] = useState(3);
-  // 📸 Countdown udah kelar, foto lagi diproses. DSLR butuh 2-4 detik buat jepret +
-  //    transfer file, jadi rentang ini dikasih indikator sendiri biar layar gak nyangkut
-  //    di angka "1" (webcam sim hampir instan, makanya dulu gak keliatan).
-  const [isProcessing, setIsProcessing] = useState(false);
   const [showFlash, setShowFlash] = useState(false);
   const [isDummyCapturing, setIsDummyCapturing] = useState(false);
   const [simMode, setSimMode] = useState(false);
+
+  // 📸 Lagi proses jepret ke DSLR/webcam. Dipisah dari isCountingDown biar
+  //    overlay hitungan bisa ditutup DULUAN, dan angka "1" gak nyangkut
+  //    selama kamera lagi jepret + download (yang di NUC bisa makan beberapa detik).
+  const [isCapturing, setIsCapturing] = useState(false);
 
   const [activePreset, setActivePreset] = useState<number | null>(null);
   // 🟢 Preset yang udah kepake selama sesi ini — tetep ijo solid walau preset lain kepilih
@@ -296,11 +297,10 @@ function SesiFotoContent() {
   const seqRef = useRef({ palm: 0, gesture: 0, preset: 0, done: 0, init: false });
   const simModeRef = useRef(false);
   const isCountingDownRef = useRef(false);
-  // 🔒 Lock jepret — nahan poll done_seq nge-trigger sesi baru selama foto diproses.
-  //    Dipisah dari isCountingDown supaya overlay angka bisa ditutup duluan.
   const isCapturingRef = useRef(false);
 
   useEffect(() => { isCountingDownRef.current = isCountingDown; }, [isCountingDown]);
+  useEffect(() => { isCapturingRef.current = isCapturing; }, [isCapturing]);
 
   // ===== PRELOAD AUDIO =====
   useEffect(() => {
@@ -458,11 +458,9 @@ function SesiFotoContent() {
     const shouldUsePhotoMode =
       simMode ||               // 🎯 SIM ON → langsung tampil webcam/DSLR (bypass feed gesture Flask) biar bisa ngetest capture
       isCountingDown ||
-      isProcessing ||          // 🎯 Jangan balik ke feed gesture pas nunggu foto DSLR — bikin kedip
-      previewPhoto !== null;
-      // 🎯 Sengaja GAK ikutin fsmState "MOVING": dulu MOVING nahan feed di mode foto
-      //    sampai robot beres gerak (bisa 2-4 detik), jadi balik ke gesture kerasa lama.
-      //    Sekarang begitu preview foto kelar → langsung balik ke feed gesture.
+      isCapturing ||           // 📸 lagi jepret → tetep di photo mode, jangan balik ke gesture
+      previewPhoto !== null ||
+      fsmState === "MOVING";
 
     const newMode: FeedMode = shouldUsePhotoMode ? "photo" : "gesture";
 
@@ -470,7 +468,7 @@ function SesiFotoContent() {
       if (DEBUG_STATE) console.log(`🎥 [FEED] Switch mode: ${feedMode} → ${newMode}`);
       setFeedMode(newMode);
     }
-  }, [isCountingDown, isProcessing, previewPhoto, feedMode, simMode]);
+  }, [isCountingDown, isCapturing, previewPhoto, fsmState, feedMode, simMode]);
 
   // 🎯 Show foto preview selama 5 detik
   const showPreview = (photoUrl: string) => {
@@ -587,14 +585,14 @@ function SesiFotoContent() {
     return () => { stream?.getTracks().forEach((t) => t.stop()); };
   }, [simMode]);
 
-  // ⏸️ Timer PAUSE saat countdown, proses jepret, atau preview
+  // ⏸️ Timer PAUSE saat countdown, capturing, atau preview
   useEffect(() => {
     if (timeLeft <= 0) return;
-    if (isCountingDown || isProcessing || previewPhoto) return;
+    if (isCountingDown || isCapturing || previewPhoto) return;
 
     const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
     return () => clearInterval(timer);
-  }, [timeLeft, isCountingDown, isProcessing, previewPhoto]);
+  }, [timeLeft, isCountingDown, isCapturing, previewPhoto]);
 
   useEffect(() => {
     if (session && timeLeft <= 0 && !hasEndedRef.current) {
@@ -688,6 +686,14 @@ function SesiFotoContent() {
         playSound(count === 2 ? "dua" : "satu");
       } else {
         clearInterval(timer);
+        // ✅ Tutup overlay hitungan SEKARANG — jangan biarin angka "1" nyangkut
+        //    selama DSLR jepret + download (di NUC bisa makan beberapa detik).
+        //    Sebelumnya isCountingDown baru false SETELAH await capture, jadi
+        //    "1" beku + animasi 'infinite' bikin keliatan looping.
+        setIsCountingDown(false);
+        isCountingDownRef.current = false;
+        setIsCapturing(true);
+        isCapturingRef.current = true;
         doCapture();
       }
     }, 1000);
@@ -696,23 +702,10 @@ function SesiFotoContent() {
   const doCapture = async () => {
     const preset = activePresetRef.current;
 
-    // 🎬 Hitungan udah kelar di angka "1" → overlay angka langsung ditutup, ganti indikator
-    //    "memproses". Lock-nya pindah ke isCapturingRef, jadi poll done_seq tetep ketahan
-    //    sampe foto beneran balik dan gak bisa nge-trigger sesi dobel.
-    setIsCountingDown(false);
-    isCountingDownRef.current = false;
-    isCapturingRef.current = true;
-    setIsProcessing(true);
-
-    try {
-      if (simModeRef.current) {
-        await captureWebcamUpload();
-      } else {
-        await takePhoto(false);
-      }
-    } finally {
-      isCapturingRef.current = false;
-      setIsProcessing(false);
+    if (simModeRef.current) {
+      await captureWebcamUpload();
+    } else {
+      await takePhoto(false);
     }
 
     // 🟢 Udah kejepret → preset ini ditandain kepake (ijo solid), highlight "lagi dipilih" dilepas
@@ -728,7 +721,13 @@ function SesiFotoContent() {
     setShowFlash(true);
     setTimeout(() => setShowFlash(false), 150);
 
-    if (!session) return;
+    if (!session) {
+      setIsCountingDown(false);
+      isCountingDownRef.current = false;
+      setIsCapturing(false);
+      isCapturingRef.current = false;
+      return;
+    }
 
     try {
       const video = videoRef.current;
@@ -776,6 +775,11 @@ function SesiFotoContent() {
       }
     } catch (err) {
       console.error("captureWebcamUpload error:", err);
+    } finally {
+      setIsCountingDown(false);
+      isCountingDownRef.current = false;
+      setIsCapturing(false);
+      isCapturingRef.current = false;
     }
   };
 
@@ -783,7 +787,13 @@ function SesiFotoContent() {
     setShowFlash(true);
     setTimeout(() => setShowFlash(false), 150);
 
-    if (!session) return;
+    if (!session) {
+      setIsCountingDown(false);
+      isCountingDownRef.current = false;
+      setIsCapturing(false);
+      isCapturingRef.current = false;
+      return;
+    }
 
     try {
       const url = `${BACKEND_URL}/api/photo-session/${session.id}/capture${isDummy ? "?dummy=true" : ""}`;
@@ -813,6 +823,11 @@ function SesiFotoContent() {
     } catch (err) {
       console.error("Capture error:", err);
     }
+
+    setIsCountingDown(false);
+    isCountingDownRef.current = false;
+    setIsCapturing(false);
+    isCapturingRef.current = false;
   };
 
   const handleDummyCapture = async () => {
@@ -991,10 +1006,17 @@ function SesiFotoContent() {
 
             {isCountingDown && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-30">
-                {/* key = angka → animasi di-mount ulang tiap hitungan, jadi ping-nya pas sekali per angka */}
-                <span key={countdownNumber} className="text-[280px] font-black text-white drop-shadow-2xl animate-ping-once">{countdownNumber}</span>
+                {/* key={countdownNumber} bikin span remount tiap angka ganti,
+                    jadi animasi 'count-pop' (yang sekarang cuma sekali) replay
+                    sekali per angka — gak looping lagi kayak 'infinite' sebelumnya. */}
+                <span key={countdownNumber} className="text-[280px] font-black text-white drop-shadow-2xl animate-count-pop">{countdownNumber}</span>
               </div>
             )}
+
+            {/* Pas lagi jepret (isCapturing), SENGAJA gak ada overlay apa-apa —
+                layar nampilin feed kamera biasa. Alur: 3 → 2 → 1 → jepret → preview.
+                State isCapturing tetep dipake buat nahan overlay hitungan biar
+                angka "1" gak nyangkut/loop, tapi gak nampilin UI tambahan. */}
 
             {previewPhoto && (
               <div className="absolute inset-0 z-[95] animate-fade-in" style={{ background: 'linear-gradient(180deg, #232323 0%, #344A41 100%)' }}>
@@ -1026,8 +1048,13 @@ function SesiFotoContent() {
         .font-inter { font-family: 'Inter', sans-serif; }
         @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
         .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
-        @keyframes ping-once { 0% { transform: scale(1); opacity: 0; } 50% { opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
-        .animate-ping-once { animation: ping-once 1s ease-out forwards; }
+        @keyframes count-pop {
+          0%   { transform: scale(0.4); opacity: 0; }
+          30%  { transform: scale(1.15); opacity: 1; }
+          60%  { transform: scale(1); opacity: 1; }
+          100% { transform: scale(1); opacity: 0.85; }
+        }
+        .animate-count-pop { animation: count-pop 0.9s ease-out 1 both; }
       `}</style>
     </main>
   );
