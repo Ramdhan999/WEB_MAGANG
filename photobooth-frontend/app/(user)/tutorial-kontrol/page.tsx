@@ -3,6 +3,19 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useRef, Suspense } from "react";
 import { usePageSound } from "@/hooks/usePageSound";
+import dynamic from "next/dynamic";
+
+// Robot 3D — three.js cuma jalan di browser, jadi WAJIB ssr: false
+const DobotViewer = dynamic(() => import("@/components/DobotViewer"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center">
+      <span className="font-hind font-semibold text-[14px] text-[#A5CFC4]">
+        Memuat robot 3D...
+      </span>
+    </div>
+  ),
+});
 
 const BACKEND_URL = "http://localhost:8080";
 
@@ -42,30 +55,23 @@ const NUMBER_NAMES: Record<number, string> = {
   6: "enam", 7: "tujuh", 8: "delapan", 9: "sembilan", 10: "sepuluh"
 };
 
-type RenderMode = "standard" | "camera-down" | "flipped" | "receding" | "approaching";
-
 interface Preset {
   id: number;
   name: string;
   desc: string;
-  cameraX: number;
-  cameraY: number;
-  armReachY: number;
-  scale: number;
-  renderMode: RenderMode;
 }
 
 const PRESETS: Preset[] = [
-  { id: 1,  name: "Preset 1",  desc: "Kamera di tengah",          cameraX: 0,    cameraY: -30,  armReachY: -30, scale: 1.00, renderMode: "standard" },
-  { id: 2,  name: "Preset 2",  desc: "Kamera ke atas",            cameraX: 0,    cameraY: -70,  armReachY: -70, scale: 1.00, renderMode: "standard" },
-  { id: 3,  name: "Preset 3",  desc: "Kamera ke kiri atas",       cameraX: -95,  cameraY: -40,  armReachY: -40, scale: 1.00, renderMode: "standard" },
-  { id: 4,  name: "Preset 4",  desc: "Kamera ke kanan atas",      cameraX: 95,   cameraY: -40,  armReachY: -40, scale: 1.00, renderMode: "standard" },
-  { id: 5,  name: "Preset 5",  desc: "Kamera kedepan menunduk",   cameraX: 0,    cameraY: -50,  armReachY: -50, scale: 1.00, renderMode: "camera-down" },
-  { id: 6,  name: "Preset 6",  desc: "Kamera ke bawah",           cameraX: 0,    cameraY: 0,    armReachY: 0,   scale: 1.00, renderMode: "flipped" },
-  { id: 7,  name: "Preset 7",  desc: "Kamera ke kanan bawah",     cameraX: 120,  cameraY: 110,   armReachY: 90,  scale: 1.00, renderMode: "standard" },
-  { id: 8,  name: "Preset 8",  desc: "Kamera ke kiri bawah",      cameraX: -120, cameraY: 110,   armReachY: 90,  scale: 1.00, renderMode: "standard" },
-  { id: 9,  name: "Preset 9",  desc: "Kamera mundur ke belakang", cameraX: 0,    cameraY: -20,  armReachY: -20, scale: 0.70, renderMode: "receding" },
-  { id: 10, name: "Preset 10", desc: "Kamera maju ke depan",      cameraX: 0,    cameraY: -30,  armReachY: -10, scale: 1.25, renderMode: "approaching" },
+  { id: 1,  name: "Preset 1",  desc: "Kamera di tengah" },
+  { id: 2,  name: "Preset 2",  desc: "Kamera ke atas" },
+  { id: 3,  name: "Preset 3",  desc: "Kamera ke kiri atas" },
+  { id: 4,  name: "Preset 4",  desc: "Kamera ke kanan atas" },
+  { id: 5,  name: "Preset 5",  desc: "Kamera kedepan menunduk" },
+  { id: 6,  name: "Preset 6",  desc: "Kamera ke bawah" },
+  { id: 7,  name: "Preset 7",  desc: "Kamera ke kanan bawah" },
+  { id: 8,  name: "Preset 8",  desc: "Kamera ke kiri bawah" },
+  { id: 9,  name: "Preset 9",  desc: "Kamera mundur ke belakang" },
+  { id: 10, name: "Preset 10", desc: "Kamera maju ke depan" },
 ];
 
 function TutorialKontrolContent() {
@@ -77,7 +83,7 @@ function TutorialKontrolContent() {
   const [timeLeft, setTimeLeft] = useState(TUTORIAL_DURATION_SEC);
   const hasRedirectedRef = useRef(false);
 
-  usePageSound("/fase/kontrol.mp3");
+  usePageSound("/fase/kontrol.mpeg");
 
   const activePreset = PRESETS[activeIndex];
 
@@ -95,7 +101,6 @@ function TutorialKontrolContent() {
     }
     const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
     return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLeft]);
 
   const handleNext = () => {
@@ -114,14 +119,6 @@ function TutorialKontrolContent() {
     const sec = s % 60;
     return `${m}:${sec.toString().padStart(2, '0')}`;
   };
-
-  const mode = activePreset.renderMode;
-  const isFlipped = mode === "flipped";
-  const isCameraDown = mode === "camera-down";
-  const isReceding = mode === "receding";
-  const isApproaching = mode === "approaching";
-  // Scale hanya untuk arm + kamera (bukan base plate)
-  const armScale = (isReceding || isApproaching) ? activePreset.scale : 1;
 
   return (
     <main className="relative min-h-screen flex flex-col items-center justify-center pt-4 pb-12 px-4 md:px-8 select-none overflow-hidden" style={{ backgroundColor: '#E3D5D5' }}>
@@ -160,234 +157,47 @@ function TutorialKontrolContent() {
       </div>
 
       {/* CONTAINER UTAMA */}
-      <div className="w-full max-w-[1400px] flex flex-col xl:flex-row items-center justify-center gap-6 mb-10 z-10">
+      <div className="w-full max-w-[1620px] flex flex-col xl:flex-row items-center justify-center gap-6 mb-10 z-10">
 
-        {/* PANEL PREVIEW ROBOT */}
+        {/* PANEL PREVIEW ROBOT — sekarang pakai model 3D asli */}
         <div
-          className="w-full xl:w-[420px] h-[420px] flex flex-col items-center justify-between p-5 relative overflow-hidden shadow-xl shrink-0"
+          className="w-full xl:w-[600px] h-[600px] flex flex-col p-5 relative overflow-hidden shadow-xl shrink-0"
           style={{
             background: 'radial-gradient(120% 120% at 50% -10%, #2A6B57 0%, #143028 40%, #1A2438 90%)',
             border: '2px solid #3A9F86',
             borderRadius: '20px'
           }}
         >
-          {/* Label atas kiri */}
-          <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-[#305A53] border border-[#5D837A] rounded-full self-start shadow-inner z-40">
-            <div className="w-[10px] h-[10px] rounded-full bg-[#27E6A0] animate-pulse" />
-            <span className="font-hind font-semibold text-[13px] text-[#A5CFC4] tracking-[-0.05em]">Pratinjau Robot</span>
-          </div>
+          {/* Baris atas: badge kiri, label preset kanan.
+              Label sengaja DI ATAS, bukan di bawah, supaya pose yang menunduk
+              (preset 6/7/8) tidak tertutup tulisan. */}
+          <div className="flex items-start justify-between gap-2 z-40 shrink-0">
+            <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-[#305A53] border border-[#5D837A] rounded-full shadow-inner">
+              <div className="w-[10px] h-[10px] rounded-full bg-[#27E6A0] animate-pulse" />
+              <span className="font-hind font-semibold text-[13px] text-[#A5CFC4] tracking-[-0.05em]">Pratinjau Robot</span>
+            </div>
 
-          {/* ROBOT ILUSTRASI — SVG */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <svg
-              viewBox="0 0 400 380"
-              className="w-full h-full"
-              style={{ maxHeight: '380px' }}
-            >
-              <defs>
-                <linearGradient id="armGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#4A8778" />
-                  <stop offset="50%" stopColor="#7BC0AA" />
-                  <stop offset="100%" stopColor="#4A8778" />
-                </linearGradient>
-                <radialGradient id="jointGrad" cx="30%" cy="30%">
-                  <stop offset="0%" stopColor="#7BC0AA" />
-                  <stop offset="60%" stopColor="#3E7566" />
-                  <stop offset="100%" stopColor="#1F4238" />
-                </radialGradient>
-                <linearGradient id="baseGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor="#5A9887" />
-                  <stop offset="100%" stopColor="#2A5A4A" />
-                </linearGradient>
-                <linearGradient id="camGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#5A9887" />
-                  <stop offset="100%" stopColor="#1F4238" />
-                </linearGradient>
-                <radialGradient id="shadowGrad">
-                  <stop offset="0%" stopColor="rgba(0,0,0,0.6)" />
-                  <stop offset="70%" stopColor="rgba(0,0,0,0)" />
-                </radialGradient>
-              </defs>
-
-              {/* GROUND SHADOW — TETAP FIXED, ga scale */}
-              <ellipse
-                cx="200"
-                cy="330"
-                rx="110"
-                ry="8"
-                fill="url(#shadowGrad)"
-                opacity="0.5"
-              />
-
-              {/* BASE PLATE — SELALU FIXED SIZE, tidak ikut scale */}
-              {!isFlipped && (
-                <>
-                  <rect x="100" y="310" width="200" height="14" rx="7" fill="url(#baseGrad)" stroke="#3E8568" strokeWidth="1.5" />
-                  <circle cx="200" cy="298" r="14" fill="url(#jointGrad)" stroke="#5A9887" strokeWidth="2" />
-                </>
-              )}
-
-              {/* ARM + KAMERA — scale hanya arm & kamera (bukan base) */}
-              <g style={{ transform: `scale(${armScale})`, transformOrigin: '200px 298px' }}>
-
-                {/* ===== FLIPPED MODE (Preset 6): Base atas, arm hang down, kamera bawah ===== */}
-                {isFlipped ? (
-                  <>
-                    {/* Base plate ATAS — rapi center */}
-                    <rect x="100" y="70" width="200" height="14" rx="7" fill="url(#baseGrad)" stroke="#3E8568" strokeWidth="1.5" />
-                    {/* Base joint di BAWAH plate */}
-                    <circle cx="200" cy="92" r="14" fill="url(#jointGrad)" stroke="#5A9887" strokeWidth="2" />
-                    {/* Lower arm hang down */}
-                    <rect x="193" y="106" width="14" height="65" rx="4" fill="url(#armGrad)" stroke="#3E8568" strokeWidth="1.5" />
-                    {/* Elbow */}
-                    <circle cx="200" cy="175" r="11" fill="url(#jointGrad)" stroke="#5A9887" strokeWidth="2" />
-                    {/* Upper arm continue down */}
-                    <rect x="194" y="186" width="12" height="55" rx="3" fill="url(#armGrad)" stroke="#3E8568" strokeWidth="1.5" />
-                    {/* Camera di bawah */}
-                    <g transform="translate(160, 245)">
-                      <rect x="0" y="0" width="80" height="60" rx="10" fill="url(#camGrad)" stroke="#7BC0AA" strokeWidth="2.5" />
-                      <circle cx="40" cy="30" r="17" fill="#0F1F1B" stroke="#7BC0AA" strokeWidth="3" />
-                      <circle cx="40" cy="30" r="10" fill="#27E6A0" />
-                      <circle cx="72" cy="8" r="3" fill="#FF5555" />
-                    </g>
-                  </>
-                ) : isCameraDown ? (
-                  <>
-                    {/* ===== CAMERA-DOWN MODE (Preset 5): Arm lurus, kamera lurus + label nunduk ===== */}
-                    {/* Lower arm vertikal */}
-                    <rect x="193" y="216" width="14" height="70" rx="4" fill="url(#armGrad)" stroke="#3E8568" strokeWidth="1.5" />
-                    {/* Elbow */}
-                    <circle cx="200" cy="216" r="11" fill="url(#jointGrad)" stroke="#5A9887" strokeWidth="2" />
-                    {/* Upper arm lurus vertikal */}
-                    <rect
-                      x="194"
-                      y="146"
-                      width="12"
-                      height="70"
-                      rx="3"
-                      fill="url(#armGrad)"
-                      stroke="#3E8568"
-                      strokeWidth="1.5"
-                    />
-                    {/* Camera — lurus (gak rotate) */}
-                    <g transform="translate(160, 86)">
-                      <rect x="0" y="0" width="80" height="60" rx="10" fill="url(#camGrad)" stroke="#7BC0AA" strokeWidth="2.5" />
-                      <circle cx="40" cy="30" r="17" fill="#0F1F1B" stroke="#7BC0AA" strokeWidth="3" />
-                      <circle cx="40" cy="30" r="10" fill="#27E6A0" />
-                      <circle cx="72" cy="8" r="3" fill="#FF5555" />
-                    </g>
-                    {/* Badge indicator — match style dengan preset 9/10 */}
-                    <g transform="translate(300, 40)">
-                      <rect x="0" y="0" width="80" height="24" rx="12" fill="#0F1F1B" opacity="0.8" stroke="#7BC0AA" strokeOpacity="0.5" strokeWidth="1" />
-                      <text x="40" y="16" textAnchor="middle" fill="#A5CFC4" fontSize="10" fontWeight="700" fontFamily="Hind Vadodara">
-                        ⬇ MENUNDUK
-                      </text>
-                    </g>
-                    {/* Arrow line pointing dari badge ke bawah kamera (nunjukin arah nunduk) */}
-                    <line
-                      x1="240"
-                      y1="146"
-                      x2="200"
-                      y2="180"
-                      stroke="#FFAE00"
-                      strokeWidth="1.5"
-                      strokeDasharray="3 2"
-                      opacity="0.6"
-                    />
-                    <polygon points="200,180 205,175 205,185" fill="#FFAE00" opacity="0.7" />
-                  </>
-                ) : (
-                  <>
-                    {/* ===== STANDARD MODE (Preset 1-4, 7, 8) + RECEDING (9) + APPROACHING (10) ===== */}
-
-                    {/* RECEDING (Preset 9): Ghost arm segments di belakang */}
-                    {isReceding && (
-                      <>
-                        <rect x="195" y="220" width="10" height="70" rx="3" fill="url(#armGrad)" opacity="0.25" />
-                        <rect x="196" y="200" width="8" height="85" rx="3" fill="url(#armGrad)" opacity="0.4" />
-                      </>
-                    )}
-
-                    {/* Lower arm */}
-                    <rect
-                      x="193"
-                      y="216"
-                      width="14"
-                      height="70"
-                      rx="4"
-                      fill="url(#armGrad)"
-                      stroke="#3E8568"
-                      strokeWidth="1.5"
-                    />
-                    {/* Elbow */}
-                    <circle cx="200" cy="216" r="11" fill="url(#jointGrad)" stroke="#5A9887" strokeWidth="2" />
-
-                    {/* Upper arm — bend ke arah camera (support arah atas & bawah) */}
-                    {(() => {
-                      const dx = activePreset.cameraX;
-                      // armReachY negatif = ke atas, positif = ke bawah
-                      const dy = activePreset.armReachY < 0
-                        ? -70 + activePreset.armReachY * 0.5   // ke atas: default -70
-                        : activePreset.armReachY * 0.7;         // ke bawah: langsung ke bawah dari elbow
-                      const armLength = Math.sqrt(dx * dx + dy * dy);
-                      // Kalo dy positif (ke bawah), angle di-flip
-                      const angle = Math.atan2(dx, dy < 0 ? -dy : -dy) * (180 / Math.PI);
-                      // Untuk ke bawah, rotate 180° biar arm mengarah ke bawah
-                      const finalAngle = dy > 0 ? angle + 180 : angle;
-
-                      return (
-                        <rect
-                          x="194"
-                          y={216 - (dy > 0 ? 0 : armLength)}
-                          width="12"
-                          height={armLength}
-                          rx="3"
-                          fill="url(#armGrad)"
-                          stroke="#3E8568"
-                          strokeWidth="1.5"
-                          transform={`rotate(${finalAngle} 200 216)`}
-                        />
-                      );
-                    })()}
-
-                    {/* Camera head — end of upper arm */}
-                    <g transform={`translate(${160 + activePreset.cameraX}, ${105 + activePreset.cameraY})`}>
-                      <rect x="0" y="0" width="80" height="60" rx="10" fill="url(#camGrad)" stroke="#7BC0AA" strokeWidth="2.5" />
-                      <circle cx="40" cy="30" r="17" fill="#0F1F1B" stroke="#7BC0AA" strokeWidth="3" />
-                      <circle cx="40" cy="30" r="10" fill="#27E6A0" />
-                      <circle cx="72" cy="8" r="3" fill="#FF5555" />
-                    </g>
-                  </>
-                )}
-              </g>
-
-              {/* Depth indicator */}
-              {(activePreset.scale < 0.9 || activePreset.scale > 1.1) && (
-                <g transform="translate(300, 40)">
-                  <rect x="0" y="0" width="80" height="24" rx="12" fill="#0F1F1B" opacity="0.8" stroke="#7BC0AA" strokeOpacity="0.5" strokeWidth="1" />
-                  <text x="40" y="16" textAnchor="middle" fill="#A5CFC4" fontSize="10" fontWeight="700" fontFamily="Hind Vadodara">
-                    {activePreset.scale > 1 ? '⤴ MAJU' : '⤵ MUNDUR'}
-                  </text>
-                </g>
-              )}
-            </svg>
-          </div>
-
-          {/* Label preset aktif (bawah) */}
-          <div className="flex flex-col items-center gap-1.5 z-30 mt-auto w-full">
-            <div className="flex items-center justify-center gap-2 px-4 py-1.5 bg-[#3A9F86] border border-[#5DBFAA] rounded-full shadow-lg">
-              <span className="font-inter font-black text-[16px] text-white tracking-tight">
-                {activePreset.name}
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center justify-center gap-2 px-4 py-1.5 bg-[#3A9F86] border border-[#5DBFAA] rounded-full shadow-lg">
+                <span className="font-inter font-black text-[16px] text-white tracking-tight">
+                  {activePreset.name}
+                </span>
+              </div>
+              <span className="font-hind font-medium text-[14px] text-[#A5CFC4] tracking-[-0.04em] text-right">
+                {activePreset.desc}
               </span>
             </div>
-            <span className="font-hind font-medium text-[15px] text-[#A5CFC4] tracking-[-0.04em]">
-              {activePreset.desc}
-            </span>
+          </div>
+
+          {/* ROBOT 3D — mengisi seluruh panel. Robot diam di tempat,
+              hanya sendinya yang bergerak mengikuti preset aktif. */}
+          <div className="absolute inset-0 z-10">
+            <DobotViewer preset={activePreset.id} />
           </div>
         </div>
 
         {/* GRID PRESET */}
-        <div className="flex-1 max-w-[1050px]">
+        <div className="flex-1 max-w-[1000px]">
           <div className="grid grid-cols-5 gap-4">
             {PRESETS.map((preset) => {
               const isActive = activePreset.id === preset.id;
@@ -396,7 +206,7 @@ function TutorialKontrolContent() {
                 <div
                   key={preset.id}
                   className={`
-                    flex flex-col items-center justify-between py-4 px-3 rounded-[20px] transition-all duration-300 shadow-md border-2 h-[190px]
+                    flex flex-col items-center justify-between py-5 px-3 rounded-[22px] transition-all duration-300 shadow-md border-2 h-[228px]
                     ${isActive
                       ? 'bg-gradient-to-br from-[#3A9F86] to-[#245F55] border-white scale-105 shadow-[0_0_20px_rgba(58,159,134,0.5)] z-10'
                       : 'bg-white border-[#54868A]/40'
@@ -404,15 +214,15 @@ function TutorialKontrolContent() {
                   `}
                 >
                   <div className={`
-                    w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0
+                    w-[40px] h-[40px] rounded-full flex items-center justify-center shrink-0
                     ${isActive ? 'bg-white' : 'bg-[#3A9F86]'}
                   `}>
-                    <span className={`font-inter font-black text-[17px] ${isActive ? 'text-[#3A9F86]' : 'text-white'}`}>
+                    <span className={`font-inter font-black text-[20px] ${isActive ? 'text-[#3A9F86]' : 'text-white'}`}>
                       {preset.id}
                     </span>
                   </div>
 
-                  <div className="h-[68px] flex items-center justify-center shrink-0">
+                  <div className="h-[92px] flex items-center justify-center shrink-0">
                     <SmartImg
                       src={`/${imgName}.png`}
                       alt={`Gesture ${preset.id}`}
@@ -422,7 +232,7 @@ function TutorialKontrolContent() {
                   </div>
 
                   <p className={`
-                    font-hind font-semibold text-[14px] text-center leading-tight tracking-[-0.03em]
+                    font-hind font-semibold text-[15px] text-center leading-tight tracking-[-0.03em]
                     ${isActive ? 'text-white' : 'text-[#405444]'}
                   `}>
                     {preset.desc}

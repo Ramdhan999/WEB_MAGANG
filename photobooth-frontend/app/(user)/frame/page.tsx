@@ -30,7 +30,7 @@ function FrameContent() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  usePageSound("/fase/frame.mp3");
+  usePageSound("/fase/frame.mpeg");
 
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -50,10 +50,10 @@ function FrameContent() {
 
   const categories = [
     { id: "semua", name: "Semua", category: null },
-    { id: "strip", name: "Strip", category: "STRIP" },
-    { id: "grid", name: "Grid 2x2", category: "GRID" },
-    { id: "collage", name: "Collage", category: "COLLAGE" },
-    { id: "duo", name: "Duo", category: "DUO" },
+    { id: "strip", name: "2 Strip", category: "STRIP" },
+    { id: "grid", name: "4 Strip", category: "GRID" },
+    { id: "collage", name: "6 Strip", category: "COLLAGE" },
+    { id: "duo", name: "8 Strip", category: "DUO" },
   ].map((c) => ({
     ...c,
     count: c.category === null ? templates.length : templates.filter((t) => t.category === c.category).length,

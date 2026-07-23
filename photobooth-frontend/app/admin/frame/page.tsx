@@ -11,6 +11,8 @@ const LAYOUT_OPTIONS = [
   { label: "Photo Strip (4 foto)", defaultSlots: 4, defaultCols: 1 },
   { label: "Photo Strip (5 foto)", defaultSlots: 5, defaultCols: 1 },
   { label: "Photo Strip (6 foto)", defaultSlots: 6, defaultCols: 1 },
+  { label: "Photo Strip (7 foto)", defaultSlots: 7, defaultCols: 1 },
+  { label: "Photo Strip (8 foto)", defaultSlots: 8, defaultCols: 1 },
 
   // ===== GRID =====
   { label: "Grid (2 foto)", defaultSlots: 2, defaultCols: 2 },
@@ -18,6 +20,8 @@ const LAYOUT_OPTIONS = [
   { label: "Grid (4 foto / 2x2)", defaultSlots: 4, defaultCols: 2 },
   { label: "Grid (5 foto)", defaultSlots: 5, defaultCols: 2 },
   { label: "Grid (6 foto / 3x2)", defaultSlots: 6, defaultCols: 3 },
+  { label: "Grid (7 foto)", defaultSlots: 7, defaultCols: 4 },
+  { label: "Grid (8 foto / 4x2)", defaultSlots: 8, defaultCols: 4 },
 
   // ===== COLLAGE =====
   { label: "Collage (2 foto)", defaultSlots: 2, defaultCols: 2 },
@@ -25,6 +29,8 @@ const LAYOUT_OPTIONS = [
   { label: "Collage (4 foto)", defaultSlots: 4, defaultCols: 2 },
   { label: "Collage (5 foto)", defaultSlots: 5, defaultCols: 2 },
   { label: "Collage (6 foto)", defaultSlots: 6, defaultCols: 2 },
+  { label: "Collage (7 foto)", defaultSlots: 7, defaultCols: 2 },
+  { label: "Collage (8 foto)", defaultSlots: 8, defaultCols: 2 },
 
   // ===== DUO (2 foto, pilih orientasi) =====
   { label: "Duo Kiri-Kanan (2 foto)", defaultSlots: 2, defaultCols: 2 },
@@ -33,6 +39,15 @@ const LAYOUT_OPTIONS = [
 
 const THEME_OPTIONS = ["Classic (Gold)", "Modern (Minimalist)", "Playful (Warna-warni)", "Dark Mode"];
 const CATEGORY_OPTIONS = ["STRIP", "GRID", "COLLAGE", "DUO"];
+// 🏷️ Label tampilan kategori. Nilai yang disimpan ke DB tetep kode di atas
+//    (STRIP/GRID/COLLAGE/DUO) — ini cuma teks yang keliatan di tab, dropdown, & badge
+//    biar sinkron sama layar user. Ganti label di sini gak nyentuh data lama.
+const CATEGORY_LABELS: Record<string, string> = {
+  STRIP: "2 Strip",
+  GRID: "4 Strip",
+  COLLAGE: "6 Strip",
+  DUO: "8 Strip",
+};
 
 const DEFAULT_OVERLAY = {
   overlay_top: 10,
@@ -409,7 +424,7 @@ export default function FramePage() {
               onClick={() => setActiveTab(tab)}
               className={`px-6 py-1.5 rounded-full font-bold text-[13px] border transition-colors flex items-center gap-2 ${activeTab === tab ? "bg-[#38635A] text-white border-transparent" : "bg-white text-[#3A3A3A] border-gray-400 hover:bg-gray-100"}`}
             >
-              {tab}
+              {CATEGORY_LABELS[tab] || tab}
               <span className={`px-2 py-0.5 rounded-full text-[11px] ${activeTab === tab ? "bg-white/20" : "bg-gray-200"}`}>
                 {count}
               </span>
@@ -433,7 +448,7 @@ export default function FramePage() {
                   <span className="text-gray-400 text-[14px] italic">No preview</span>
                 )}
                 <span className="absolute top-3 left-3 bg-white px-3 py-1 rounded-full text-[12px] font-bold border border-gray-300 text-[#294B6C]">
-                  {t.category || "Frame"}
+                  {CATEGORY_LABELS[t.category] || t.category || "Frame"}
                 </span>
                 <span className={`absolute top-3 right-3 px-3 py-1 rounded-full text-[12px] font-bold ${t.is_active ? "bg-[#C9F2E0] text-[#5F6C66]" : "bg-[#E8CECE] text-[#3A3A3A]"}`}>
                   {t.is_active ? "Aktif" : "Nonaktif"}
@@ -508,7 +523,7 @@ export default function FramePage() {
                         className="w-full px-4 py-2 border border-gray-400 rounded-full focus:outline-none focus:border-[#38635A] text-[14px] bg-white cursor-pointer"
                       >
                         {CATEGORY_OPTIONS.map((c) => (
-                          <option key={c} value={c}>{c}</option>
+                          <option key={c} value={c}>{CATEGORY_LABELS[c] || c}</option>
                         ))}
                       </select>
                     </div>

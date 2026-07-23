@@ -217,7 +217,7 @@ function SidePanel({
             Angka 1 - 10
           </span>
           <span className="font-hind font-bold text-[13px] text-[#2B6E6A] tracking-[0.1em] uppercase leading-tight text-center mt-1">
-            Warna Ijo = Preset Sudah Dipakai
+            Ijo Cerah = Preset Sudah Dipakai
           </span>
         </div>
 
@@ -249,6 +249,10 @@ function SesiFotoContent() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isCountingDown, setIsCountingDown] = useState(false);
   const [countdownNumber, setCountdownNumber] = useState(3);
+  // 📸 Countdown udah kelar, foto lagi diproses. DSLR butuh 2-4 detik buat jepret +
+  //    transfer file, jadi rentang ini dikasih indikator sendiri biar layar gak nyangkut
+  //    di angka "1" (webcam sim hampir instan, makanya dulu gak keliatan).
+  const [isProcessing, setIsProcessing] = useState(false);
   const [showFlash, setShowFlash] = useState(false);
   const [isDummyCapturing, setIsDummyCapturing] = useState(false);
   const [simMode, setSimMode] = useState(false);
@@ -292,6 +296,9 @@ function SesiFotoContent() {
   const seqRef = useRef({ palm: 0, gesture: 0, preset: 0, done: 0, init: false });
   const simModeRef = useRef(false);
   const isCountingDownRef = useRef(false);
+  // 🔒 Lock jepret — nahan poll done_seq nge-trigger sesi baru selama foto diproses.
+  //    Dipisah dari isCountingDown supaya overlay angka bisa ditutup duluan.
+  const isCapturingRef = useRef(false);
 
   useEffect(() => { isCountingDownRef.current = isCountingDown; }, [isCountingDown]);
 
@@ -451,6 +458,7 @@ function SesiFotoContent() {
     const shouldUsePhotoMode =
       simMode ||               // 🎯 SIM ON → langsung tampil webcam/DSLR (bypass feed gesture Flask) biar bisa ngetest capture
       isCountingDown ||
+      isProcessing ||          // 🎯 Jangan balik ke feed gesture pas nunggu foto DSLR — bikin kedip
       previewPhoto !== null ||
       fsmState === "MOVING";
 
@@ -460,7 +468,7 @@ function SesiFotoContent() {
       if (DEBUG_STATE) console.log(`🎥 [FEED] Switch mode: ${feedMode} → ${newMode}`);
       setFeedMode(newMode);
     }
-  }, [isCountingDown, previewPhoto, fsmState, feedMode, simMode]);
+  }, [isCountingDown, isProcessing, previewPhoto, fsmState, feedMode, simMode]);
 
   // 🎯 Show foto preview selama 5 detik
   const showPreview = (photoUrl: string) => {
@@ -577,14 +585,14 @@ function SesiFotoContent() {
     return () => { stream?.getTracks().forEach((t) => t.stop()); };
   }, [simMode]);
 
-  // ⏸️ Timer PAUSE saat countdown atau preview
+  // ⏸️ Timer PAUSE saat countdown, proses jepret, atau preview
   useEffect(() => {
     if (timeLeft <= 0) return;
-    if (isCountingDown || previewPhoto) return;
+    if (isCountingDown || isProcessing || previewPhoto) return;
 
     const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
     return () => clearInterval(timer);
-  }, [timeLeft, isCountingDown, previewPhoto]);
+  }, [timeLeft, isCountingDown, isProcessing, previewPhoto]);
 
   useEffect(() => {
     if (session && timeLeft <= 0 && !hasEndedRef.current) {
@@ -639,7 +647,7 @@ function SesiFotoContent() {
           if (DEBUG_STATE) console.log("✋ [PALM] MULAI ter-trigger");
         }
 
-        if (!isCountingDownRef.current && !previewPhotoRef.current && s.preset_seq > prev.preset) {
+        if (!isCountingDownRef.current && !isCapturingRef.current && !previewPhotoRef.current && s.preset_seq > prev.preset) {
           playSound("4");
           const picked = s.current_preset;
           if (typeof picked === 'number') {
@@ -648,7 +656,7 @@ function SesiFotoContent() {
           }
         }
 
-        if (s.done_seq > prev.done && !isCountingDownRef.current && !previewPhotoRef.current) {
+        if (s.done_seq > prev.done && !isCountingDownRef.current && !isCapturingRef.current && !previewPhotoRef.current) {
           startSession();
         }
 
@@ -663,7 +671,7 @@ function SesiFotoContent() {
   }, [isCameraActive]);
 
   const startSession = () => {
-    if (isCountingDownRef.current) return;
+    if (isCountingDownRef.current || isCapturingRef.current) return;
     if (DEBUG_STATE) console.log("⏱️ [COUNTDOWN] mulai 3-2-1");
     setIsCountingDown(true);
     isCountingDownRef.current = true;
@@ -686,10 +694,23 @@ function SesiFotoContent() {
   const doCapture = async () => {
     const preset = activePresetRef.current;
 
-    if (simModeRef.current) {
-      await captureWebcamUpload();
-    } else {
-      await takePhoto(false);
+    // 🎬 Hitungan udah kelar di angka "1" → overlay angka langsung ditutup, ganti indikator
+    //    "memproses". Lock-nya pindah ke isCapturingRef, jadi poll done_seq tetep ketahan
+    //    sampe foto beneran balik dan gak bisa nge-trigger sesi dobel.
+    setIsCountingDown(false);
+    isCountingDownRef.current = false;
+    isCapturingRef.current = true;
+    setIsProcessing(true);
+
+    try {
+      if (simModeRef.current) {
+        await captureWebcamUpload();
+      } else {
+        await takePhoto(false);
+      }
+    } finally {
+      isCapturingRef.current = false;
+      setIsProcessing(false);
     }
 
     // 🟢 Udah kejepret → preset ini ditandain kepake (ijo solid), highlight "lagi dipilih" dilepas
@@ -705,11 +726,7 @@ function SesiFotoContent() {
     setShowFlash(true);
     setTimeout(() => setShowFlash(false), 150);
 
-    if (!session) {
-      setIsCountingDown(false);
-      isCountingDownRef.current = false;
-      return;
-    }
+    if (!session) return;
 
     try {
       const video = videoRef.current;
@@ -757,9 +774,6 @@ function SesiFotoContent() {
       }
     } catch (err) {
       console.error("captureWebcamUpload error:", err);
-    } finally {
-      setIsCountingDown(false);
-      isCountingDownRef.current = false;
     }
   };
 
@@ -767,11 +781,7 @@ function SesiFotoContent() {
     setShowFlash(true);
     setTimeout(() => setShowFlash(false), 150);
 
-    if (!session) {
-      setIsCountingDown(false);
-      isCountingDownRef.current = false;
-      return;
-    }
+    if (!session) return;
 
     try {
       const url = `${BACKEND_URL}/api/photo-session/${session.id}/capture${isDummy ? "?dummy=true" : ""}`;
@@ -801,9 +811,6 @@ function SesiFotoContent() {
     } catch (err) {
       console.error("Capture error:", err);
     }
-
-    setIsCountingDown(false);
-    isCountingDownRef.current = false;
   };
 
   const handleDummyCapture = async () => {
@@ -982,7 +989,20 @@ function SesiFotoContent() {
 
             {isCountingDown && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-30">
-                <span className="text-[280px] font-black text-white drop-shadow-2xl animate-ping-once">{countdownNumber}</span>
+                {/* key = angka → animasi di-mount ulang tiap hitungan, jadi ping-nya pas sekali per angka */}
+                <span key={countdownNumber} className="text-[280px] font-black text-white drop-shadow-2xl animate-ping-once">{countdownNumber}</span>
+              </div>
+            )}
+
+            {isProcessing && !previewPhoto && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 bg-black/55 z-[90] animate-fade-in">
+                <div className="w-[72px] h-[72px] rounded-full border-[5px] border-white/20 border-t-white animate-spin"></div>
+                <span className="font-inter font-black text-[38px] text-white tracking-[-0.03em] drop-shadow-lg">
+                  Memproses foto...
+                </span>
+                <span className="font-hind font-semibold text-[16px] text-white/60 tracking-widest uppercase">
+                  Tahan pose sebentar
+                </span>
               </div>
             )}
 
@@ -1017,7 +1037,7 @@ function SesiFotoContent() {
         @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
         .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
         @keyframes ping-once { 0% { transform: scale(1); opacity: 0; } 50% { opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
-        .animate-ping-once { animation: ping-once 1s ease-out infinite; }
+        .animate-ping-once { animation: ping-once 1s ease-out forwards; }
       `}</style>
     </main>
   );

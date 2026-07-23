@@ -5,7 +5,7 @@ import { useEffect, useRef, Suspense } from "react";
 import { usePageSound } from "@/hooks/usePageSound";
 
 const BACKEND_URL = "http://localhost:8080";
-const AUDIO_SRC = "/fase/terima_kasih.mp3";
+const AUDIO_SRC = "/fase/terima_kasih.mpeg";
 const FALLBACK_REDIRECT_SEC = 5;
 
 function TerimaKasihContent() {

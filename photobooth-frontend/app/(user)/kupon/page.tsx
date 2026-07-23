@@ -37,12 +37,61 @@ function KuponContent() {
   const isEditable = mode === "physical";
 
   usePageSound("/fase/voucher.mp3");
-  usePageSound("/fase/voucher_gaada.mp3", error);
+
+  // ===== SOUND ERROR: dikelola manual, BUKAN lewat usePageSound =====
+  // Alasannya: kalau lewat usePageSound(error), suara ikut mati begitu
+  // state error di-false-kan (misal pas kolom diketuk). Sekarang:
+  // - suara error jalan sampai selesai sendiri, gak kepotong ketuk/ketik
+  // - tanda merah baru hilang PAS suaranya beres (event "ended")
+  const errorAudioRef = useRef<HTMLAudioElement | null>(null);
+  const errorFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerError = (text: string) => {
+    setErrorText(text);
+    setError(true);
+
+    // kalau ada suara error lama yang masih jalan, ganti dengan yang baru
+    // (biar gak dua suara numpuk)
+    if (errorAudioRef.current) {
+      errorAudioRef.current.pause();
+      errorAudioRef.current = null;
+    }
+    if (errorFallbackTimerRef.current) {
+      clearTimeout(errorFallbackTimerRef.current);
+      errorFallbackTimerRef.current = null;
+    }
+
+    const audio = new Audio("/fase/voucher_gaada.mp3");
+    errorAudioRef.current = audio;
+
+    const finish = () => {
+      if (errorAudioRef.current === audio) errorAudioRef.current = null;
+      setError(false);
+    };
+
+    // balik normal tepat saat suaranya selesai
+    audio.addEventListener("ended", finish, { once: true });
+    audio.play().catch(() => {
+      // audio gagal diputar (file gak ketemu / autoplay diblok):
+      // fallback ke timer 3 detik seperti perilaku lama
+      errorFallbackTimerRef.current = setTimeout(finish, 3000);
+    });
+  };
+
+  // beres-beres kalau pindah halaman, biar suaranya gak kebawa
+  useEffect(() => {
+    return () => {
+      errorAudioRef.current?.pause();
+      if (errorFallbackTimerRef.current) clearTimeout(errorFallbackTimerRef.current);
+    };
+  }, []);
+  // ===== END SOUND ERROR =====
 
   // Deteksi cara interaksi saat kolom voucher ditekan
   const handleFieldPointerDown = (e: React.PointerEvent<HTMLInputElement>) => {
     if (loading) return;
-    setError(false);
+    // SENGAJA gak setError(false) di sini:
+    // suara + tulisan merah dibiarkan lanjut sampai selesai sendiri
     if (e.pointerType === "touch" || e.pointerType === "pen") {
       setMode("touch");     // kiosk/touchscreen -> keyboard on-screen
     } else {
@@ -72,7 +121,6 @@ function KuponContent() {
 
   const appendChar = (ch: string) => {
     if (!showKeyboard || loading) return;
-    setError(false);
     setVoucherCode((prev) => (prev + ch).slice(0, MAX_VOUCHER_LEN));
   };
   const handleBackspace = () => {
@@ -87,15 +135,11 @@ function KuponContent() {
   const handleRedeem = async () => {
     const code = voucherCode.trim();
     if (!code) {
-      setError(true);
-      setErrorText("Masukkan kode voucher dulu!");
-      setTimeout(() => setError(false), 3000);
+      triggerError("Masukkan kode voucher dulu!");
       return;
     }
     if (!paket) {
-      setError(true);
-      setErrorText("Paket tidak terdeteksi. Mulai dari pilih paket lagi.");
-      setTimeout(() => setError(false), 3000);
+      triggerError("Paket tidak terdeteksi. Mulai dari pilih paket lagi.");
       return;
     }
 
@@ -111,11 +155,9 @@ function KuponContent() {
       const data = await res.json();
 
       if (!res.ok || !data.valid) {
-        setError(true);
-        setErrorText(data.error || "Kode voucher tidak valid!");
         setVoucherCode("");
         setLoading(false);
-        setTimeout(() => setError(false), 3000);
+        triggerError(data.error || "Kode voucher tidak valid!");
         return;
       }
 
@@ -128,10 +170,8 @@ function KuponContent() {
         const freeData = await freeRes.json();
 
         if (!freeRes.ok || !freeData.transaction_id) {
-          setError(true);
-          setErrorText(freeData.error || "Gagal proses voucher gratis");
           setLoading(false);
-          setTimeout(() => setError(false), 3000);
+          triggerError(freeData.error || "Gagal proses voucher gratis");
           return;
         }
 
@@ -142,10 +182,8 @@ function KuponContent() {
       router.push(`/qris?paket=${encodeURIComponent(paket)}&voucher=${encodeURIComponent(code)}`);
     } catch (err) {
       console.error("Redeem error:", err);
-      setError(true);
-      setErrorText("Gagal konek ke server");
       setLoading(false);
-      setTimeout(() => setError(false), 3000);
+      triggerError("Gagal konek ke server");
     }
   };
 
@@ -218,7 +256,6 @@ function KuponContent() {
             value={voucherCode}
             onChange={(e) => {
               if (isEditable) {
-                setError(false);
                 setVoucherCode(e.target.value.toUpperCase().slice(0, MAX_VOUCHER_LEN));
               }
             }}
