@@ -312,6 +312,23 @@ function SesiFotoContent() {
 
   const [flaskVideoError, setFlaskVideoError] = useState(false);
 
+  // 🔄 Nonce buat "nyegerin" koneksi stream gesture (Flask :5001).
+  //    Pas robot gerak buat jepret, Flask berhenti kirim frame, jadi koneksi
+  //    MJPEG-nya beku. Waktu balik dari preview, browser masih nampilin frame
+  //    beku terakhir sampai stream jalan lagi — itu jeda "nyangkut di DSLR".
+  //    Dengan nambah nonce ke URL tiap kali balik ke idle, browser buka koneksi
+  //    baru dan langsung ambil frame live. Tampilan/posisi feed sama sekali
+  //    nggak berubah — cuma stream-nya di-reconnect.
+  const [gestureFeedNonce, setGestureFeedNonce] = useState(0);
+  const prevShotPhaseForFeedRef = useRef<ShotPhase>("idle");
+  useEffect(() => {
+    if (prevShotPhaseForFeedRef.current !== "idle" && shotPhase === "idle") {
+      setGestureFeedNonce((n) => n + 1);
+      if (DEBUG_STATE) console.log("🔄 [GESTURE] reconnect feed biar nggak nampilin frame beku");
+    }
+    prevShotPhaseForFeedRef.current = shotPhase;
+  }, [shotPhase]);
+
   const imgRef = useRef<HTMLImageElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hasEndedRef = useRef(false);
@@ -982,7 +999,7 @@ function SesiFotoContent() {
             <div className="absolute inset-0 z-0">
               {!flaskVideoError ? (
                 <img
-                  src={isCameraActive ? FLASK_VIDEO_FEED : undefined}
+                  src={isCameraActive ? `${FLASK_VIDEO_FEED}?g=${gestureFeedNonce}` : undefined}
                   alt="Gesture detection feed"
                   className="w-full h-full object-cover"
                   onError={() => setFlaskVideoError(true)}
