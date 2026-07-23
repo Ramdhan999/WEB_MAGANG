@@ -3,9 +3,9 @@
 import { useState, useRef, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePageSound } from "@/hooks/usePageSound";
+import { useSessionCountdown, SESSION_SECONDS } from "@/hooks/useSessionCountdown";
 
 const BACKEND_URL = "http://localhost:8080";
-const TIMER_SECONDS = 180; // 3 menit
 
 interface ApiPhoto { id: number; session_id: number; photo_path: string; slot_number: number; }
 interface ApiSession { id: number; transaction_id: string; frame_id: string; template_name: string; photos: ApiPhoto[]; }
@@ -100,7 +100,6 @@ function PrintReviewContent() {
 
   const [activelyPanning, setActivelyPanning] = useState<number | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
-  const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
 
   // 🎯 Slot DOM dimensions (tracked via ResizeObserver)
   const [slotDims, setSlotDims] = useState<Record<number, { w: number; h: number }>>({});
@@ -169,16 +168,13 @@ function PrintReviewContent() {
     fetchData();
   }, [txn]);
 
-  // 🎯 Timer countdown
-  useEffect(() => {
-    if (timeLeft <= 0) {
-      sessionStorage.setItem("arranged_slots", JSON.stringify(slotsRef.current));
-      router.push(`/filter?txn=${txn}`);
-      return;
-    }
-    const t = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
-    return () => clearInterval(t);
-  }, [timeLeft, router, txn]);
+  // ⏱️ Timer 1 SESI — NYAMBUNG dari /frame (deadline sama di sessionStorage).
+  //    Bulak-balik frame ↔ print-preview nggak nge-reset lagi. Pas habis:
+  //    simpan susunan slot lalu lanjut ke filter (perilaku lama dipertahankan).
+  const timeLeft = useSessionCountdown(txn, SESSION_SECONDS, () => {
+    sessionStorage.setItem("arranged_slots", JSON.stringify(slotsRef.current));
+    router.push(`/filter?txn=${txn}`);
+  });
 
   // 🎯 ResizeObserver — track slot dimensions
   useEffect(() => {
@@ -513,7 +509,7 @@ function PrintReviewContent() {
         </div>
         <div className="flex flex-col justify-center leading-none">
           <span className="font-hind font-semibold text-[10px] tracking-widest text-[#7A7979]">SISA WAKTU</span>
-          <span className="font-inter font-bold text-[22px] text-[#FFAE00] tracking-[-0.05em] leading-none" style={{ textShadow: "1px 1px 3px rgba(0,0,0,0.2)" }}>
+          <span className="font-inter font-bold text-[22px] text-[#FFAE00] tracking-[-0.05em] leading-none" style={{ textShadow: "1px 1px 3px rgba(0,0,0,0.2)" }} suppressHydrationWarning>
             {formatTime(timeLeft)}
           </span>
         </div>

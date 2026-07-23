@@ -240,6 +240,21 @@ func main() {
 		StreamLiveView(c.Writer, c.Request)
 	})
 
+	// Snapshot 1 frame live view (JPEG tunggal). Dipakai /kamera buat PREVIEW INSTAN
+	// tepat setelah shutter, TANPA nunggu file full-res (~6 dtk). File full-res
+	// tetap disimpan + diupload ke Drive di jalur /capture yang jalan di background.
+	// Di-flip biar orientasinya sama persis kayak feed live view.
+	r.GET("/api/camera/snapshot", func(c *gin.Context) {
+		frame, err := services.GetLiveViewFrame()
+		if err != nil {
+			c.JSON(503, gin.H{"error": "live view belum siap: " + err.Error()})
+			return
+		}
+		frame = flipJPEGHorizontal(frame)
+		c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+		c.Data(200, "image/jpeg", frame)
+	})
+
 	r.GET("/api/robot/detection", func(c *gin.Context) {
 		resp, err := http.Get(robotBaseURL + "/detection")
 		if err != nil {

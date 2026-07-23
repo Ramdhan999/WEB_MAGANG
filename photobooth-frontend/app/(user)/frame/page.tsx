@@ -3,6 +3,13 @@
 import { useState, useRef, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePageSound } from "@/hooks/usePageSound";
+import { useSessionCountdown, SESSION_SECONDS } from "@/hooks/useSessionCountdown";
+
+const formatTime = (s: number) => {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+};
 
 interface ApiTemplate {
   id: number;
@@ -125,6 +132,14 @@ function FrameContent() {
     }
   };
 
+  // ⏱️ Timer 1 SESI — MULAI di sini (frame), lanjut ke print-preview pakai
+  //    deadline yang SAMA (sessionStorage). Bulak-balik frame ↔ print-preview
+  //    nggak nge-reset. Waktu habis: kalau template udah dipilih → auto-lanjut;
+  //    kalau belum, diam di 0:00 (jangan maksa navigasi tanpa template).
+  const timeLeft = useSessionCountdown(txn, SESSION_SECONDS, () => {
+    if (selectedTemplate && !isSubmitting) handleNext();
+  });
+
   // Kembali ke /kamera (alur original)
   // const buildBackUrl = () => (txn ? `/kamera?txn=${txn}` : "/kamera");
 
@@ -134,6 +149,19 @@ function FrameContent() {
       <div className="absolute top-0 left-0 w-full h-[12px] z-50 flex">
         <div className="h-full w-[75%]" style={{ background: 'linear-gradient(270deg, #00FFA2 0%, #467664 99.09%)' }}></div>
         <div className="h-full flex-grow max-w-[486px]" style={{ background: 'linear-gradient(90deg, #151515 0%, #252525 100%)', transform: 'matrix(-1, 0, 0, 1, 0, 0)' }}></div>
+      </div>
+
+      {/* ⏱️ Timer sesi — gaya sama & waktunya NYAMBUNG dengan print-preview */}
+      <div className="fixed top-6 right-6 z-[80] px-4 h-[52px] bg-white border-[1.5px] border-[#54868A] rounded-[28px] shadow-md flex items-center gap-3">
+        <div className="w-[32px] h-[32px] bg-[#3F9C9B] border-[2px] border-[#235757] rounded-full flex items-center justify-center shadow-inner shrink-0">
+          <img src="/icon1.png" alt="timer" className="w-[16px] h-[16px] object-contain" />
+        </div>
+        <div className="flex flex-col justify-center leading-none">
+          <span className="font-hind font-semibold text-[10px] tracking-widest text-[#7A7979]">SISA WAKTU</span>
+          <span className="font-inter font-bold text-[22px] text-[#FFAE00] tracking-[-0.05em] leading-none" style={{ textShadow: "1px 1px 3px rgba(0,0,0,0.2)" }} suppressHydrationWarning>
+            {formatTime(timeLeft)}
+          </span>
+        </div>
       </div>
 
       {errorMsg && (

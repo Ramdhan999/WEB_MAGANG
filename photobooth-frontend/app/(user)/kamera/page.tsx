@@ -20,19 +20,30 @@ const CAPTURE_ASPECT = 3 / 2;
 const PREVIEW_DURATION_SEC = 3;
 
 // 🎯 Audio loop config
-const JARI_MULAI_GAP_MS = 5000; // Jeda antar loop jari_mulai (ms)
+const JARI_MULAI_GAP_MS = 5000;
 
-// 🛟 Batas aman satu siklus jepret. Kalau lewat ini, tampilan dipaksa balik
-//    ke kamera gesture — jaga-jaga kalau DSLR gagal merespons.
-const SHOT_TIMEOUT_MS = 30000;
+// 🛟 Batas aman satu siklus jepret. Dinaikkan jadi 45 detik karena capture
+//    DSLR sendiri sudah makan ~6 detik (shutter → tulis kartu → transfer USB).
+const SHOT_TIMEOUT_MS = 45000;
 
-// 🔒 FSM state type dari backend
+// 🔌 Reconnect feed gesture setelah tiap siklus jepret.
+//    CATATAN JUJUR: belum terbukti perlu. Diagnosis terakhir menunjukkan yang
+//    bikin layar "nyangkut" adalah jeda capture DSLR (~6 detik), bukan feed
+//    Flask yang beku. Kalau setelah overlay "Menyimpan foto..." dipasang
+//    tampilan sudah mulus, set GESTURE_RECONNECT = false untuk memangkas
+//    600ms tambahan di akhir tiap siklus.
+const GESTURE_RECONNECT = true;
+const GESTURE_KILL_MS = 250;
+const GESTURE_WARMUP_MS = 350;
+
+// 🧪 SIM ON → LANGSUNG tampil webcam (bypass feed gesture Flask), biar pas
+//    `curl /api/sim/on` layar langsung pindah ke mode simulasi, nggak nyangkut
+//    di gesture. Ini perilaku yang diinginkan buat tes jepret via curl.
+const SIM_BYPASS_GESTURE = true;
+
 type FsmStateType = "LOCKED" | "UNLOCKING" | "UNLOCKED" | "CONFIRMING" | "MOVING" | "COOLDOWN" | "";
+type FeedMode = "gesture" | "photo";
 
-// 🎯 Camera feed mode
-type FeedMode = "gesture" | "photo"; // gesture=Flask, photo=DSLR
-
-// 🤖 Flask MJPEG stream URL
 const FLASK_URL = "http://localhost:5001";
 const FLASK_VIDEO_FEED = `${FLASK_URL}/video_feed`;
 
@@ -44,7 +55,7 @@ interface SessionData {
 }
 
 // ============================================================================
-// 🔢 MINI GESTURE CARD — untuk grid preset di sidebar
+// 🔢 MINI GESTURE CARD
 // ============================================================================
 function MiniGestureCard({
   n,
@@ -98,7 +109,7 @@ function MiniGestureCard({
 }
 
 // ============================================================================
-// 🎯 SIDE PANEL — Detection info tanpa kamera preview
+// 🎯 SIDE PANEL
 // ============================================================================
 function SidePanel({
   fsmState,
@@ -203,10 +214,10 @@ function SidePanel({
 
         <div className="flex flex-col items-center gap-1.5 pb-2 border-b border-[#D5C5B0]">
           <span className="font-hind font-bold text-[13px] text-[#3A9F86] tracking-[0.1em] uppercase leading-tight">
-            ① Mulai (Gesture Angka 5)
+            ① Mulai (Gesture Angka {START_GESTURE})
           </span>
           <div className="w-[90px] h-[90px]">
-            <MiniGestureCard n={5} isStart startTriggered={startTriggered} />
+            <MiniGestureCard n={START_GESTURE} isStart startTriggered={startTriggered} />
           </div>
         </div>
 
@@ -252,7 +263,6 @@ function SesiFotoContent() {
   const [showFlash, setShowFlash] = useState(false);
   const [isDummyCapturing, setIsDummyCapturing] = useState(false);
   const [simMode, setSimMode] = useState(false);
-
   const [isCapturing, setIsCapturing] = useState(false);
 
   const [activePreset, setActivePreset] = useState<number | null>(null);
@@ -267,15 +277,22 @@ function SesiFotoContent() {
   const previewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewPhotoRef = useRef<string | null>(null);
 
+  // ===== REFS UMUM =====
+  const imgRef = useRef<HTMLImageElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const hasEndedRef = useRef(false);
+  const simModeRef = useRef(false);
+  const isCountingDownRef = useRef(false);
+  const isCapturingRef = useRef(false);
+  const seqRef = useRef({ palm: 0, gesture: 0, preset: 0, done: 0, init: false });
+
   // ==========================================================================
-  // 🎥 TAHAP JEPRET — SATU-SATUNYA penentu kamera mana yang tampil.
-  //    "idle"     -> kamera GESTURE
-  //    selain itu -> kamera DSLR
+  // 🎥 TAHAP JEPRET — penentu tunggal kamera mana yang tampil.
   //
-  //    Sebelumnya ini dihitung dari enam kondisi bertumpuk (isCapturing,
-  //    previewPhoto, fsmState, activePreset, dst). Kalau satu saja tidak
-  //    sempat kembali ke nilai semula, tampilan nyangkut di DSLR. Sekarang
-  //    hanya satu variabel, jadi tidak mungkin nyangkut.
+  //    idle     → kamera GESTURE (Flask)
+  //    framing  → DSLR  (preset terkonfirmasi, robot nge-frame)
+  //    shooting → DSLR  (hitungan 3-2-1, LALU jeda capture ~6 detik)
+  //    preview  → hasil foto nutup layar
   // ==========================================================================
   type ShotPhase = "idle" | "framing" | "shooting" | "preview";
   const [shotPhase, setShotPhase] = useState<ShotPhase>("idle");
@@ -288,68 +305,92 @@ function SesiFotoContent() {
     setShotPhase(p);
   };
 
-  const feedMode: FeedMode = simMode || shotPhase !== "idle" ? "photo" : "gesture";
+  const feedMode: FeedMode =
+    (SIM_BYPASS_GESTURE && simMode) || shotPhase !== "idle" ? "photo" : "gesture";
 
-  // 🛟 Pengaman: kalau satu siklus jepret kelamaan (DSLR ngadat, dsb),
-  //    paksa balik ke kamera gesture supaya layar tidak beku di DSLR.
-  //    Overlay preview ikut dibersihkan — kalau tidak, gambar hasil foto
-  //    bisa nyangkut menutupi layar walaupun fase sudah kembali idle.
-  useEffect(() => {
-    if (shotPhase === "idle") return;
-    const t = setTimeout(() => {
-      console.warn("🛟 [FASE] kelamaan, dipaksa balik ke gesture");
-      if (previewTimerRef.current) {
-        clearInterval(previewTimerRef.current);
-        previewTimerRef.current = null;
-      }
-      goPhase("idle");
-      setPreviewPhoto(null);
-      previewPhotoRef.current = null;
-    }, SHOT_TIMEOUT_MS);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shotPhase]);
-
+  // ===== KONTROL FEED GESTURE =====
   const [flaskVideoError, setFlaskVideoError] = useState(false);
+  const [gestureAlive, setGestureAlive] = useState(true);
+  const [gestureKey, setGestureKey] = useState(0);
 
-  // 🔄 Nonce buat "nyegerin" koneksi stream gesture (Flask :5001).
-  //    Pas robot gerak buat jepret, Flask berhenti kirim frame, jadi koneksi
-  //    MJPEG-nya beku. Waktu balik dari preview, browser masih nampilin frame
-  //    beku terakhir sampai stream jalan lagi — itu jeda "nyangkut di DSLR".
-  //    Dengan nambah nonce ke URL tiap kali balik ke idle, browser buka koneksi
-  //    baru dan langsung ambil frame live. Tampilan/posisi feed sama sekali
-  //    nggak berubah — cuma stream-nya di-reconnect.
-  const [gestureFeedNonce, setGestureFeedNonce] = useState(0);
-  const prevShotPhaseForFeedRef = useRef<ShotPhase>("idle");
-  useEffect(() => {
-    if (prevShotPhaseForFeedRef.current !== "idle" && shotPhase === "idle") {
-      setGestureFeedNonce((n) => n + 1);
-      if (DEBUG_STATE) console.log("🔄 [GESTURE] reconnect feed biar nggak nampilin frame beku");
-    }
-    prevShotPhaseForFeedRef.current = shotPhase;
-  }, [shotPhase]);
+  const reconnectTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const endingCycleRef = useRef(false);
 
-  const imgRef = useRef<HTMLImageElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const hasEndedRef = useRef(false);
+  const clearReconnectTimers = () => {
+    reconnectTimersRef.current.forEach((t) => clearTimeout(t));
+    reconnectTimersRef.current = [];
+  };
 
   // ===== AUDIO =====
   const audioRef = useRef<Record<string, HTMLAudioElement>>({});
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastPlayedRef = useRef<{ key: string; time: number }>({ key: "", time: 0 });
+  // 🩹 Simpan listener 'ended' yang masih nempel per audio, supaya bisa dilepas.
+  //    Sebelumnya listener cuma dilepas kalau audio selesai normal — kalau
+  //    di-pause di tengah, listener-nya nempel selamanya dan menumpuk tiap
+  //    pemutaran. Gejalanya: satu suara memicu callback berkali-kali.
+  const endedHandlersRef = useRef<Record<string, () => void>>({});
 
   const prevFsmStateRef = useRef<FsmStateType>("");
   const hasPlayedLayarRef = useRef(false);
   const jariMulaiLoopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const jariMulaiLoopActiveRef = useRef(false);
-
-  const seqRef = useRef({ palm: 0, gesture: 0, preset: 0, done: 0, init: false });
-  const simModeRef = useRef(false);
-  const isCountingDownRef = useRef(false);
-  const isCapturingRef = useRef(false);
+  const pendingJariMulaiRef = useRef(false);
 
   useEffect(() => { isCountingDownRef.current = isCountingDown; }, [isCountingDown]);
   useEffect(() => { isCapturingRef.current = isCapturing; }, [isCapturing]);
+
+  // ==========================================================================
+  // 🔚 TUTUP SIKLUS JEPRET — dipanggil saat preview 3 detik selesai.
+  // ==========================================================================
+  const endShotCycle = () => {
+    if (endingCycleRef.current) return;
+    endingCycleRef.current = true;
+
+    if (previewTimerRef.current) {
+      clearInterval(previewTimerRef.current);
+      previewTimerRef.current = null;
+    }
+
+    const finish = () => {
+      previewPhotoRef.current = null;
+      setPreviewPhoto(null);
+      goPhase("idle");
+      endingCycleRef.current = false;
+      if (DEBUG_STATE) console.log("🖼️ [PREVIEW] selesai → kamera gesture");
+    };
+
+    if (!GESTURE_RECONNECT) { finish(); return; }
+
+    if (DEBUG_STATE) console.log("🔌 [GESTURE] putus koneksi lama...");
+    setGestureAlive(false);
+
+    const t1 = setTimeout(() => {
+      setGestureKey((k) => k + 1);
+      setFlaskVideoError(false);
+      setGestureAlive(true);
+      if (DEBUG_STATE) console.log("🔌 [GESTURE] koneksi baru dibuka");
+
+      const t2 = setTimeout(finish, GESTURE_WARMUP_MS);
+      reconnectTimersRef.current.push(t2);
+    }, GESTURE_KILL_MS);
+    reconnectTimersRef.current.push(t1);
+  };
+
+  // 🛟 Pengaman kalau satu siklus jepret kelamaan
+  useEffect(() => {
+    if (shotPhase === "idle") return;
+    const t = setTimeout(() => {
+      console.warn("🛟 [FASE] kelamaan, dipaksa balik ke gesture");
+      setIsCountingDown(false);
+      isCountingDownRef.current = false;
+      setIsCapturing(false);
+      isCapturingRef.current = false;
+      endShotCycle();
+    }, SHOT_TIMEOUT_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shotPhase]);
 
   // ===== PRELOAD AUDIO =====
   useEffect(() => {
@@ -390,11 +431,20 @@ function SesiFotoContent() {
       try { currentAudioRef.current.pause(); currentAudioRef.current.currentTime = 0; } catch (e) { }
     }
 
+    // 🩹 Lepas listener lama dulu — ini yang bocor di versi sebelumnya.
+    const stale = endedHandlersRef.current[key];
+    if (stale) {
+      a.removeEventListener("ended", stale);
+      delete endedHandlersRef.current[key];
+    }
+
     const handleEnded = () => {
       if (DEBUG_STATE) console.log("🔊 [SOUND] ended:", key);
       a.removeEventListener("ended", handleEnded);
+      delete endedHandlersRef.current[key];
       if (onEnded) onEnded();
     };
+    endedHandlersRef.current[key] = handleEnded;
     a.addEventListener("ended", handleEnded);
 
     try {
@@ -421,22 +471,30 @@ function SesiFotoContent() {
   };
 
   const startJariMulaiLoop = () => {
+    // 🔇 Jangan bunyi "angkat jari buat mulai" pas orangnya lagi difoto.
+    //    FSM sempat balik ke LOCKED di tengah shooting, dan tanpa penjaga ini
+    //    suaranya kedengeran persis waktu shutter.
+    if (shotPhaseRef.current !== "idle") {
+      pendingJariMulaiRef.current = true;
+      if (DEBUG_STATE) console.log("🔇 [FLOW] jari_mulai ditunda, lagi fase:", shotPhaseRef.current);
+      return;
+    }
     if (jariMulaiLoopActiveRef.current) return;
     jariMulaiLoopActiveRef.current = true;
+    pendingJariMulaiRef.current = false;
 
     if (DEBUG_STATE) console.log("🔊 [FLOW] Start jari_mulai loop (with 5s gap)");
 
     const playLoop = () => {
       if (!jariMulaiLoopActiveRef.current) return;
+      if (shotPhaseRef.current !== "idle") return;
       playSound("jari_mulai", () => {
         if (!jariMulaiLoopActiveRef.current) return;
         if (DEBUG_STATE) console.log("🔊 [FLOW] jari_mulai ended, wait 5s...");
 
         jariMulaiLoopTimerRef.current = setTimeout(() => {
           jariMulaiLoopTimerRef.current = null;
-          if (jariMulaiLoopActiveRef.current) {
-            playLoop();
-          }
+          if (jariMulaiLoopActiveRef.current) playLoop();
         }, JARI_MULAI_GAP_MS);
       });
     };
@@ -458,6 +516,19 @@ function SesiFotoContent() {
       stopCurrentAudio();
     }
   };
+
+  // 🔊 Begitu balik ke idle, baru loop yang tadi ditunda boleh jalan.
+  useEffect(() => {
+    if (shotPhase !== "idle") {
+      stopJariMulaiLoop();
+      return;
+    }
+    if (pendingJariMulaiRef.current) {
+      const t = setTimeout(() => startJariMulaiLoop(), 400);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shotPhase]);
 
   // 🔊 AUDIO FLOW #1
   useEffect(() => {
@@ -484,16 +555,14 @@ function SesiFotoContent() {
     if ((prev === "UNLOCKING" || prev === "LOCKED") && curr === "UNLOCKED") {
       if (DEBUG_STATE) console.log("🔊 [FLOW] FSM → UNLOCKED, stop jari_mulai + play unlocked");
       stopJariMulaiLoop();
-      setTimeout(() => {
-        playSound("unlocked");
-      }, 100);
+      if (shotPhaseRef.current === "idle") {
+        setTimeout(() => playSound("unlocked"), 100);
+      }
     }
 
     if (prev !== "" && prev !== "LOCKED" && curr === "LOCKED") {
       if (DEBUG_STATE) console.log("🔊 [FLOW] FSM back to LOCKED, restart jari_mulai loop");
-      setTimeout(() => {
-        startJariMulaiLoop();
-      }, 500);
+      setTimeout(() => startJariMulaiLoop(), 500);
     }
 
     prevFsmStateRef.current = curr;
@@ -501,41 +570,21 @@ function SesiFotoContent() {
   }, [fsmState]);
 
   // ==========================================================================
-  // 🖼️ PREVIEW FOTO
-  //
-  //    Urutan setState di sini sengaja dibalik dari versi sebelumnya:
-  //    - Saat MULAI  : overlay dipasang DULU, baru fase diganti. Jadi tidak
-  //                    pernah ada frame di mana DSLR sudah dilepas tapi
-  //                    overlay belum naik.
-  //    - Saat SELESAI: fase dikembalikan ke idle DULU, baru overlay dibuka.
-  //                    Jadi tidak pernah ada frame di mana overlay sudah
-  //                    hilang tapi DSLR masih ter-mount — ini yang bikin
-  //                    layar sempat "balik ke DSLR" sebelum pindah gesture.
+  // 🖼️ PREVIEW FOTO — 3 detik, lalu tutup siklus
   // ==========================================================================
   const showPreview = (photoUrl: string) => {
     if (DEBUG_STATE) console.log("🖼️ [PREVIEW] show:", photoUrl);
 
-    setPreviewPhoto(photoUrl);        // ⬅️ overlay naik duluan
+    setPreviewPhoto(photoUrl);
     previewPhotoRef.current = photoUrl;
-    goPhase("preview");               // ⬅️ baru ganti fase, sudah ketutup overlay
+    goPhase("preview");
 
-    if (previewTimerRef.current) {
-      clearInterval(previewTimerRef.current);
-    }
+    if (previewTimerRef.current) clearInterval(previewTimerRef.current);
 
     let remaining = PREVIEW_DURATION_SEC;
     previewTimerRef.current = setInterval(() => {
       remaining -= 1;
-      if (remaining <= 0) {
-        clearInterval(previewTimerRef.current!);
-        previewTimerRef.current = null;
-
-        goPhase("idle");              // ⬅️ DSLR di-unmount duluan
-        setPreviewPhoto(null);        // ⬅️ baru overlay dibuka
-        previewPhotoRef.current = null;
-
-        if (DEBUG_STATE) console.log("🖼️ [PREVIEW] selesai → kamera gesture");
-      }
+      if (remaining <= 0) endShotCycle();
     }, 1000);
   };
 
@@ -605,13 +654,9 @@ function SesiFotoContent() {
     (async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
+          video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
           audio: false,
         });
-
         const track = stream.getVideoTracks()[0];
         if (track) {
           const s = track.getSettings();
@@ -625,10 +670,10 @@ function SesiFotoContent() {
     return () => { stream?.getTracks().forEach((t) => t.stop()); };
   }, [simMode]);
 
-  // ⏸️ Timer PAUSE selama satu siklus jepret berlangsung
+  // ⏸️ Timer PAUSE selama siklus jepret
   useEffect(() => {
     if (timeLeft <= 0) return;
-    if (shotPhase === "shooting" || shotPhase === "preview") return;
+    if (shotPhase !== "idle") return;
 
     const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
     return () => clearInterval(timer);
@@ -654,6 +699,7 @@ function SesiFotoContent() {
   useEffect(() => {
     return () => {
       if (previewTimerRef.current) clearInterval(previewTimerRef.current);
+      clearReconnectTimers();
       stopJariMulaiLoop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -667,7 +713,7 @@ function SesiFotoContent() {
       try {
         const res = await fetch(`${BACKEND_URL}/api/robot/state`);
         const s = await res.json();
-        if (DEBUG_STATE) console.log("[STATE]", s);
+        if (DEBUG_STATE) console.log("[STATE]", s, "| fase:", shotPhaseRef.current);
 
         simModeRef.current = !!s.sim_enabled;
         setSimMode(!!s.sim_enabled);
@@ -687,9 +733,9 @@ function SesiFotoContent() {
           if (DEBUG_STATE) console.log("✋ [PALM] MULAI ter-trigger");
         }
 
-        if (!isCountingDownRef.current && !isCapturingRef.current && !previewPhotoRef.current && s.preset_seq > prev.preset) {
+        // ✅ Preset terkonfirmasi → pindah ke DSLR
+        if (shotPhaseRef.current === "idle" && !endingCycleRef.current && s.preset_seq > prev.preset) {
           playSound("4");
-          // Preset dipilih → robot mulai nge-frame, tampilkan DSLR
           goPhase("framing");
           const picked = s.current_preset;
           if (typeof picked === 'number') {
@@ -698,7 +744,12 @@ function SesiFotoContent() {
           }
         }
 
-        if (s.done_seq > prev.done && !isCountingDownRef.current && !isCapturingRef.current && !previewPhotoRef.current) {
+        // ✅ Robot selesai posisi → hitungan + jepret
+        if (
+          s.done_seq > prev.done &&
+          !endingCycleRef.current &&
+          (shotPhaseRef.current === "idle" || shotPhaseRef.current === "framing")
+        ) {
           startSession();
         }
 
@@ -714,8 +765,11 @@ function SesiFotoContent() {
 
   const startSession = () => {
     if (isCountingDownRef.current || isCapturingRef.current) return;
+    if (shotPhaseRef.current === "shooting" || shotPhaseRef.current === "preview") return;
+
     if (DEBUG_STATE) console.log("⏱️ [COUNTDOWN] mulai 3-2-1");
     goPhase("shooting");
+    stopJariMulaiLoop();
     setIsCountingDown(true);
     isCountingDownRef.current = true;
     setCountdownNumber(3);
@@ -729,8 +783,6 @@ function SesiFotoContent() {
         playSound(count === 2 ? "dua" : "satu");
       } else {
         clearInterval(timer);
-        // Tutup overlay hitungan SEKARANG supaya angka "1" tidak nyangkut
-        // selama DSLR memotret dan mengunduh.
         setIsCountingDown(false);
         isCountingDownRef.current = false;
         setIsCapturing(true);
@@ -743,7 +795,6 @@ function SesiFotoContent() {
   const doCapture = async () => {
     const preset = activePresetRef.current;
 
-    // Tandai preset kepake SEKARANG, sebelum menunggu kamera selesai.
     if (typeof preset === 'number') {
       setUsedPresets((list) => list.includes(preset) ? list : [...list, preset]);
       setActivePreset(null);
@@ -767,9 +818,11 @@ function SesiFotoContent() {
       isCountingDownRef.current = false;
       setIsCapturing(false);
       isCapturingRef.current = false;
-      goPhase("idle");
+      endShotCycle();
       return;
     }
+
+    let previewShown = false;
 
     try {
       const video = videoRef.current;
@@ -800,7 +853,11 @@ function SesiFotoContent() {
       ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
       const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
 
+      // Webcam sim: preview instan, upload jalan di belakang layar.
+      setIsCapturing(false);
+      isCapturingRef.current = false;
       showPreview(dataUrl);
+      previewShown = true;
 
       const res = await fetch(`${BACKEND_URL}/api/photo-session/${session.id}/capture-upload`, {
         method: "POST",
@@ -822,6 +879,7 @@ function SesiFotoContent() {
       isCountingDownRef.current = false;
       setIsCapturing(false);
       isCapturingRef.current = false;
+      if (!previewShown) endShotCycle();
     }
   };
 
@@ -834,20 +892,58 @@ function SesiFotoContent() {
       isCountingDownRef.current = false;
       setIsCapturing(false);
       isCapturingRef.current = false;
-      goPhase("idle");
+      endShotCycle();
       return;
     }
 
+    // ========================================================================
+    // 🚀 DSLR ASLI — PREVIEW INSTAN, capture full-res JALAN DI BACKGROUND.
+    //    Dulu di sini nunggu fetch /capture selesai (~6 dtk: shutter → kamera
+    //    tulis kartu → transfer USB) baru preview naik → layar nyangkut lama.
+    //    Sekarang: preview langsung pakai snapshot 1 frame live view (yang lagi
+    //    tampil = pose orangnya), lalu /capture ditembak tanpa ditunggu. File
+    //    full-res + upload Drive tetap jalan penuh di backend, cuma nggak nahan UI.
+    // ========================================================================
+    if (!isDummy) {
+      // Preview instan dari frame live view — tidak ada lagi jeda "Menyimpan foto...".
+      setIsCountingDown(false);
+      isCountingDownRef.current = false;
+      setIsCapturing(false);
+      isCapturingRef.current = false;
+      showPreview(`${BACKEND_URL}/api/camera/snapshot?t=${Date.now()}`);
+
+      // Tembak capture full-res di belakang layar. Responsnya (~6 dtk) cuma dipakai
+      // buat update counter "foto diambil" — preview & balik-ke-gesture nggak nungguin.
+      const t0 = performance.now();
+      fetch(`${BACKEND_URL}/api/photo-session/${session.id}/capture`, { method: "POST" })
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (DEBUG_STATE) console.log(`⏱️ [CAPTURE] full-res kelar di background ${Math.round(performance.now() - t0)} ms`);
+          if (!res.ok) {
+            console.error("Capture DSLR gagal (background):", data.error);
+            return;
+          }
+          console.log("📸 DSLR Jepret! (background)", data);
+          if (data.total_photos !== undefined) setFotoDiambil(data.total_photos);
+        })
+        .catch((err) => console.error("Capture DSLR error (background):", err));
+      return;
+    }
+
+    // ========================================================================
+    // 🧪 DUMMY — backend balik instan (picsum), jadi tetap ditunggu seperti biasa.
+    // ========================================================================
     let previewShown = false;
 
     try {
-      const url = `${BACKEND_URL}/api/photo-session/${session.id}/capture${isDummy ? "?dummy=true" : ""}`;
+      const url = `${BACKEND_URL}/api/photo-session/${session.id}/capture?dummy=true`;
       const res = await fetch(url, { method: "POST" });
       const data = await res.json();
+
       if (!res.ok) {
         console.error("Capture gagal:", data.error);
       } else {
-        console.log(isDummy ? "🧪 DUMMY Jepret!" : "📸 DSLR Jepret!", data);
+        console.log("🧪 DUMMY Jepret!", data);
         if (data.total_photos !== undefined) setFotoDiambil(data.total_photos);
 
         const photoPath = data.photo_url
@@ -875,14 +971,16 @@ function SesiFotoContent() {
     setIsCapturing(false);
     isCapturingRef.current = false;
 
-    // Kalau preview gagal tampil (jepret error / path kosong), jangan biarkan
-    // layar tertinggal di DSLR — langsung balik ke kamera gesture.
-    if (!previewShown) goPhase("idle");
+    if (!previewShown) endShotCycle();
   };
 
   const handleDummyCapture = async () => {
     if (isDummyCapturing) return;
+    if (shotPhaseRef.current !== "idle") return;
     setIsDummyCapturing(true);
+    goPhase("shooting");
+    setIsCapturing(true);
+    isCapturingRef.current = true;
     await takePhoto(true);
     setTimeout(() => setIsDummyCapturing(false), 500);
   };
@@ -987,23 +1085,15 @@ function SesiFotoContent() {
             style={{ background: 'linear-gradient(180deg, #232323 0%, #344A41 100%)' }}
           >
 
-            {/* GESTURE MODE — Flask MJPEG.
-                Selalu terpasang DAN selalu terlihat, di lapisan paling bawah.
-                DSLR dan preview cuma menumpuk di atasnya.
-
-                Sebelumnya lapisan ini disembunyikan pakai visibility:hidden
-                selama jepret. Akibatnya browser menghentikan paint MJPEG-nya,
-                dan saat preview selesai butuh waktu untuk menampilkan frame
-                baru — itulah jeda "diem sebentar di DSLR" yang terlihat.
-                Dengan dibiarkan selalu terlihat, feed-nya tidak pernah dingin. */}
+            {/* LAPISAN 1 (z-0) — GESTURE / Flask MJPEG */}
             <div className="absolute inset-0 z-0">
-              {!flaskVideoError ? (
+              {gestureAlive && !flaskVideoError ? (
                 <img
-                  src={isCameraActive ? `${FLASK_VIDEO_FEED}?g=${gestureFeedNonce}` : undefined}
+                  key={`gesture-${gestureKey}`}
+                  src={isCameraActive ? `${FLASK_VIDEO_FEED}?r=${gestureKey}` : undefined}
                   alt="Gesture detection feed"
                   className="w-full h-full object-cover"
                   onError={() => setFlaskVideoError(true)}
-                  crossOrigin="anonymous"
                 />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-gradient-to-b from-[#232323] to-[#344A41]">
@@ -1013,10 +1103,7 @@ function SesiFotoContent() {
                     </svg>
                   </div>
                   <p className="font-inter font-semibold text-[20px] text-white/70 text-center px-4">
-                    Menunggu koneksi kamera...
-                  </p>
-                  <p className="font-hind font-medium text-[14px] text-white/45 tracking-widest uppercase">
-                    Feed Not Available
+                    Menyambungkan kamera...
                   </p>
                 </div>
               )}
@@ -1027,30 +1114,32 @@ function SesiFotoContent() {
               </div>
             </div>
 
-            {/* PHOTO MODE — hanya dirender saat fase jepret berlangsung.
-                Karena benar-benar dilepas dari DOM, mustahil tersisa di layar. */}
-            {feedMode === "photo" && (
-              <div className="absolute inset-0 z-20">
-                {simMode ? (
-                  <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
-                ) : (
-                  <img
-                    ref={imgRef}
-                    src={isCameraActive ? `${BACKEND_URL}/api/camera/stream` : undefined}
-                    className="w-full h-full object-cover"
-                    crossOrigin="anonymous"
-                    alt="Live View DSLR"
-                  />
-                )}
+            {/* LAPISAN 2 (z-20) — DSLR / webcam sim. Selalu ter-mount. */}
+            <div
+              className="absolute inset-0 z-20 transition-opacity duration-200"
+              style={{
+                opacity: feedMode === "photo" ? 1 : 0,
+                pointerEvents: feedMode === "photo" ? "auto" : "none",
+              }}
+            >
+              {simMode ? (
+                <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+              ) : (
+                <img
+                  ref={imgRef}
+                  src={isCameraActive ? `${BACKEND_URL}/api/camera/stream` : undefined}
+                  className="w-full h-full object-cover"
+                  alt="Live View DSLR"
+                />
+              )}
 
-                <div className="absolute top-4 left-4 flex items-center gap-2 px-3 py-1.5 bg-black/70 backdrop-blur-sm rounded-full">
-                  <div className="w-[9px] h-[9px] rounded-full bg-[#FF3838] animate-pulse"></div>
-                  <span className="font-hind font-bold text-[12px] text-white tracking-widest">
-                    {simMode ? "SIAP FOTO (SIMULASI WEBCAM)" : "SIAP FOTO"}
-                  </span>
-                </div>
+              <div className="absolute top-4 left-4 flex items-center gap-2 px-3 py-1.5 bg-black/70 backdrop-blur-sm rounded-full">
+                <div className="w-[9px] h-[9px] rounded-full bg-[#FF3838] animate-pulse"></div>
+                <span className="font-hind font-bold text-[12px] text-white tracking-widest">
+                  {simMode ? "SIAP FOTO (SIMULASI WEBCAM)" : "SIAP FOTO"}
+                </span>
               </div>
-            )}
+            </div>
 
             {!isCameraActive && (
               <div className="absolute inset-0 flex flex-col items-center justify-center animate-pulse z-10">
@@ -1065,12 +1154,16 @@ function SesiFotoContent() {
               </div>
             )}
 
+            {/* ⚡ Preview foto — muncul INSTAN dari snapshot live view (pose orangnya).
+                Overlay "Menyimpan foto... / Tahan pose dulu ya" sudah dibuang: file
+                full-res disimpan di background, jadi nggak ada lagi jeda nunggu. */}
             {previewPhoto && (
               <div className="absolute inset-0 z-[95] animate-fade-in" style={{ background: 'linear-gradient(180deg, #232323 0%, #344A41 100%)' }}>
                 <img
                   src={previewPhoto}
                   alt="Hasil foto"
                   className="w-full h-full object-cover"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
                 />
               </div>
             )}
