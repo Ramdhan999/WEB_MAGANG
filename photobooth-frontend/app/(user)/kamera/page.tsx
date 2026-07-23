@@ -994,18 +994,6 @@ function SesiFotoContent() {
               </div>
             )}
 
-            {isProcessing && !previewPhoto && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 bg-black/55 z-[90] animate-fade-in">
-                <div className="w-[72px] h-[72px] rounded-full border-[5px] border-white/20 border-t-white animate-spin"></div>
-                <span className="font-inter font-black text-[38px] text-white tracking-[-0.03em] drop-shadow-lg">
-                  Memproses foto...
-                </span>
-                <span className="font-hind font-semibold text-[16px] text-white/60 tracking-widest uppercase">
-                  Tahan pose sebentar
-                </span>
-              </div>
-            )}
-
             {previewPhoto && (
               <div className="absolute inset-0 z-[95] animate-fade-in" style={{ background: 'linear-gradient(180deg, #232323 0%, #344A41 100%)' }}>
                 <img
