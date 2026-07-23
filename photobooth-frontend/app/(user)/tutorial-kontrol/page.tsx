@@ -19,7 +19,7 @@ const DobotViewer = dynamic(() => import("@/components/DobotViewer"), {
 
 const BACKEND_URL = "http://localhost:8080";
 
-const TUTORIAL_DURATION_SEC = 120;
+const TUTORIAL_DURATION_SEC = 60;
 
 function SmartImg({
   src, alt, className, fallback,

@@ -497,6 +497,7 @@ function SesiFotoContent() {
         previewPhotoRef.current = null;
         // ✅ Preview kelar → langsung balik ke gesture, jangan nunggu robot selesai MOVING
         setSuppressMovingPhoto(true);
+        setFeedMode("gesture");
         if (DEBUG_STATE) console.log("🖼️ [PREVIEW] hide → balik ke gesture");
       } else {
         setPreviewCountdown(remaining);
@@ -714,18 +715,17 @@ function SesiFotoContent() {
   const doCapture = async () => {
     const preset = activePresetRef.current;
 
-    if (simModeRef.current) {
-      await captureWebcamUpload();
-    } else {
-      await takePhoto(false);
-    }
-
-    // 🟢 Udah kejepret → preset ini ditandain kepake (ijo solid), highlight "lagi dipilih" dilepas
     if (typeof preset === 'number') {
       setUsedPresets((list) => list.includes(preset) ? list : [...list, preset]);
       setActivePreset(null);
       activePresetRef.current = null;
       if (DEBUG_STATE) console.log("🟢 [PRESET] ditandain kepake:", preset);
+    }
+
+    if (simModeRef.current) {
+      await captureWebcamUpload();
+    } else {
+      await takePhoto(false);
     }
   };
 
@@ -994,7 +994,7 @@ function SesiFotoContent() {
               ) : (
                 <img
                   ref={imgRef}
-                  src={isCameraActive ? `${BACKEND_URL}/api/camera/stream` : undefined}
+                  src={isCameraActive && feedMode === "photo" ? `${BACKEND_URL}/api/camera/stream` : undefined}
                   className="w-full h-full object-cover"
                   crossOrigin="anonymous"
                   alt="Live View DSLR"
