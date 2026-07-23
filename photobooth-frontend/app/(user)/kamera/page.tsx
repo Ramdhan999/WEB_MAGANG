@@ -277,12 +277,6 @@ function SesiFotoContent() {
   // 🎥 Feed mode: gesture (Flask) atau photo (DSLR)
   const [feedMode, setFeedMode] = useState<FeedMode>("gesture");
 
-  // 🎯 Habis preview 3 detik selesai, jangan tahan photo-mode cuma gara-gara robot
-  //    masih MOVING balik ke posisi awal. Kalau nggak di-suppress, layar bakal nyangkut
-  //    di DSLR live view sampe robot selesai gerak — itu yang bikin "lama ga langsung
-  //    pindah" ke gesture. Di-reset tiap sesi jepret baru dimulai (startSession).
-  const [suppressMovingPhoto, setSuppressMovingPhoto] = useState(false);
-
   const [flaskVideoError, setFlaskVideoError] = useState(false);
 
   const imgRef = useRef<HTMLImageElement>(null);
@@ -462,11 +456,11 @@ function SesiFotoContent() {
   // 🎥 FEED MODE TRANSITION: Auto-switch based on FSM & preview
   useEffect(() => {
     const shouldUsePhotoMode =
-      simMode ||               // 🎯 SIM ON → langsung tampil webcam/DSLR (bypass feed gesture Flask) biar bisa ngetest capture
+      simMode ||
       isCountingDown ||
-      isCapturing ||           // 📸 lagi jepret → tetep di photo mode, jangan balik ke gesture
+      isCapturing ||
       previewPhoto !== null ||
-      (fsmState === "MOVING" && !suppressMovingPhoto);
+      (fsmState === "MOVING" && activePreset !== null);
 
     const newMode: FeedMode = shouldUsePhotoMode ? "photo" : "gesture";
 
@@ -474,7 +468,7 @@ function SesiFotoContent() {
       if (DEBUG_STATE) console.log(`🎥 [FEED] Switch mode: ${feedMode} → ${newMode}`);
       setFeedMode(newMode);
     }
-  }, [isCountingDown, isCapturing, previewPhoto, fsmState, feedMode, simMode, suppressMovingPhoto]);
+  }, [isCountingDown, isCapturing, previewPhoto, fsmState, feedMode, simMode, activePreset]);
 
   // 🎯 Show foto preview selama 5 detik
   const showPreview = (photoUrl: string) => {
@@ -495,8 +489,6 @@ function SesiFotoContent() {
         previewTimerRef.current = null;
         setPreviewPhoto(null);
         previewPhotoRef.current = null;
-        // ✅ Preview kelar → langsung balik ke gesture, jangan nunggu robot selesai MOVING
-        setSuppressMovingPhoto(true);
         setFeedMode("gesture");
         if (DEBUG_STATE) console.log("🖼️ [PREVIEW] hide → balik ke gesture");
       } else {
@@ -658,8 +650,6 @@ function SesiFotoContent() {
 
         if (!isCountingDownRef.current && !isCapturingRef.current && !previewPhotoRef.current && s.preset_seq > prev.preset) {
           playSound("4");
-          // Preset baru dipilih → robot bakal MOVING nge-frame lagi, jadi izinin photo-mode lagi
-          setSuppressMovingPhoto(false);
           const picked = s.current_preset;
           if (typeof picked === 'number') {
             setActivePreset(picked);
@@ -684,8 +674,6 @@ function SesiFotoContent() {
   const startSession = () => {
     if (isCountingDownRef.current || isCapturingRef.current) return;
     if (DEBUG_STATE) console.log("⏱️ [COUNTDOWN] mulai 3-2-1");
-    // Sesi jepret baru → aktifin lagi MOVING→photo (buat framing DSLR sebelum jepret)
-    setSuppressMovingPhoto(false);
     setIsCountingDown(true);
     isCountingDownRef.current = true;
     setCountdownNumber(3);
