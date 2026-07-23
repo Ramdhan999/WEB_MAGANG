@@ -264,7 +264,6 @@ function SesiFotoContent() {
   const [unlockProgress, setUnlockProgress] = useState(0);
 
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
-  const [previewCountdown, setPreviewCountdown] = useState(PREVIEW_DURATION_SEC);
   const previewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewPhotoRef = useRef<string | null>(null);
 
@@ -293,11 +292,19 @@ function SesiFotoContent() {
 
   // 🛟 Pengaman: kalau satu siklus jepret kelamaan (DSLR ngadat, dsb),
   //    paksa balik ke kamera gesture supaya layar tidak beku di DSLR.
+  //    Overlay preview ikut dibersihkan — kalau tidak, gambar hasil foto
+  //    bisa nyangkut menutupi layar walaupun fase sudah kembali idle.
   useEffect(() => {
     if (shotPhase === "idle") return;
     const t = setTimeout(() => {
       console.warn("🛟 [FASE] kelamaan, dipaksa balik ke gesture");
+      if (previewTimerRef.current) {
+        clearInterval(previewTimerRef.current);
+        previewTimerRef.current = null;
+      }
       goPhase("idle");
+      setPreviewPhoto(null);
+      previewPhotoRef.current = null;
     }, SHOT_TIMEOUT_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -476,13 +483,24 @@ function SesiFotoContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fsmState]);
 
-  // 🎯 Preview foto — masuk fase "preview", lalu kembali ke "idle" saat selesai
+  // ==========================================================================
+  // 🖼️ PREVIEW FOTO
+  //
+  //    Urutan setState di sini sengaja dibalik dari versi sebelumnya:
+  //    - Saat MULAI  : overlay dipasang DULU, baru fase diganti. Jadi tidak
+  //                    pernah ada frame di mana DSLR sudah dilepas tapi
+  //                    overlay belum naik.
+  //    - Saat SELESAI: fase dikembalikan ke idle DULU, baru overlay dibuka.
+  //                    Jadi tidak pernah ada frame di mana overlay sudah
+  //                    hilang tapi DSLR masih ter-mount — ini yang bikin
+  //                    layar sempat "balik ke DSLR" sebelum pindah gesture.
+  // ==========================================================================
   const showPreview = (photoUrl: string) => {
     if (DEBUG_STATE) console.log("🖼️ [PREVIEW] show:", photoUrl);
-    goPhase("preview");
-    setPreviewPhoto(photoUrl);
+
+    setPreviewPhoto(photoUrl);        // ⬅️ overlay naik duluan
     previewPhotoRef.current = photoUrl;
-    setPreviewCountdown(PREVIEW_DURATION_SEC);
+    goPhase("preview");               // ⬅️ baru ganti fase, sudah ketutup overlay
 
     if (previewTimerRef.current) {
       clearInterval(previewTimerRef.current);
@@ -494,12 +512,12 @@ function SesiFotoContent() {
       if (remaining <= 0) {
         clearInterval(previewTimerRef.current!);
         previewTimerRef.current = null;
-        setPreviewPhoto(null);
+
+        goPhase("idle");              // ⬅️ DSLR di-unmount duluan
+        setPreviewPhoto(null);        // ⬅️ baru overlay dibuka
         previewPhotoRef.current = null;
-        goPhase("idle");   // ⬅️ balik ke kamera gesture
+
         if (DEBUG_STATE) console.log("🖼️ [PREVIEW] selesai → kamera gesture");
-      } else {
-        setPreviewCountdown(remaining);
       }
     }, 1000);
   };
@@ -953,15 +971,15 @@ function SesiFotoContent() {
           >
 
             {/* GESTURE MODE — Flask MJPEG.
-                Selalu terpasang supaya alirannya tidak putus, cuma
-                disembunyikan waktu DSLR sedang tampil. */}
-            <div
-              className="absolute inset-0"
-              style={{
-                visibility: feedMode === "gesture" ? "visible" : "hidden",
-                pointerEvents: feedMode === "gesture" ? "auto" : "none",
-              }}
-            >
+                Selalu terpasang DAN selalu terlihat, di lapisan paling bawah.
+                DSLR dan preview cuma menumpuk di atasnya.
+
+                Sebelumnya lapisan ini disembunyikan pakai visibility:hidden
+                selama jepret. Akibatnya browser menghentikan paint MJPEG-nya,
+                dan saat preview selesai butuh waktu untuk menampilkan frame
+                baru — itulah jeda "diem sebentar di DSLR" yang terlihat.
+                Dengan dibiarkan selalu terlihat, feed-nya tidak pernah dingin. */}
+            <div className="absolute inset-0 z-0">
               {!flaskVideoError ? (
                 <img
                   src={isCameraActive ? FLASK_VIDEO_FEED : undefined}
