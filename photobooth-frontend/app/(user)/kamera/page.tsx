@@ -973,29 +973,28 @@ function SesiFotoContent() {
             </div>
 
             {/* PHOTO MODE — DSLR feed atau webcam sim */}
-            <div
-              className="absolute inset-0 transition-opacity duration-500"
-              style={{ opacity: feedMode === "photo" ? 1 : 0, pointerEvents: feedMode === "photo" ? "auto" : "none" }}
-            >
-              {simMode ? (
-                <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
-              ) : (
-                <img
-                  ref={imgRef}
-                  src={isCameraActive && feedMode === "photo" ? `${BACKEND_URL}/api/camera/stream` : undefined}
-                  className="w-full h-full object-cover"
-                  crossOrigin="anonymous"
-                  alt="Live View DSLR"
-                />
-              )}
+            {feedMode === "photo" && (
+              <div className="absolute inset-0 animate-fade-in">
+                {simMode ? (
+                  <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+                ) : (
+                  <img
+                    ref={imgRef}
+                    src={isCameraActive ? `${BACKEND_URL}/api/camera/stream` : undefined}
+                    className="w-full h-full object-cover"
+                    crossOrigin="anonymous"
+                    alt="Live View DSLR"
+                  />
+                )}
 
-              <div className="absolute top-4 left-4 flex items-center gap-2 px-3 py-1.5 bg-black/70 backdrop-blur-sm rounded-full">
-                <div className="w-[9px] h-[9px] rounded-full bg-[#FF3838] animate-pulse"></div>
-                <span className="font-hind font-bold text-[12px] text-white tracking-widest">
-                  {simMode ? "SIAP FOTO (SIMULASI WEBCAM)" : "SIAP FOTO"}
-                </span>
+                <div className="absolute top-4 left-4 flex items-center gap-2 px-3 py-1.5 bg-black/70 backdrop-blur-sm rounded-full">
+                  <div className="w-[9px] h-[9px] rounded-full bg-[#FF3838] animate-pulse"></div>
+                  <span className="font-hind font-bold text-[12px] text-white tracking-widest">
+                    {simMode ? "SIAP FOTO (SIMULASI WEBCAM)" : "SIAP FOTO"}
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
 
             {!isCameraActive && (
               <div className="absolute inset-0 flex flex-col items-center justify-center animate-pulse z-10">
