@@ -459,8 +459,10 @@ function SesiFotoContent() {
       simMode ||               // 🎯 SIM ON → langsung tampil webcam/DSLR (bypass feed gesture Flask) biar bisa ngetest capture
       isCountingDown ||
       isProcessing ||          // 🎯 Jangan balik ke feed gesture pas nunggu foto DSLR — bikin kedip
-      previewPhoto !== null ||
-      fsmState === "MOVING";
+      previewPhoto !== null;
+      // 🎯 Sengaja GAK ikutin fsmState "MOVING": dulu MOVING nahan feed di mode foto
+      //    sampai robot beres gerak (bisa 2-4 detik), jadi balik ke gesture kerasa lama.
+      //    Sekarang begitu preview foto kelar → langsung balik ke feed gesture.
 
     const newMode: FeedMode = shouldUsePhotoMode ? "photo" : "gesture";
 
@@ -468,7 +470,7 @@ function SesiFotoContent() {
       if (DEBUG_STATE) console.log(`🎥 [FEED] Switch mode: ${feedMode} → ${newMode}`);
       setFeedMode(newMode);
     }
-  }, [isCountingDown, isProcessing, previewPhoto, fsmState, feedMode, simMode]);
+  }, [isCountingDown, isProcessing, previewPhoto, feedMode, simMode]);
 
   // 🎯 Show foto preview selama 5 detik
   const showPreview = (photoUrl: string) => {
