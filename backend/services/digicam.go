@@ -6,8 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
-	"image/draw"
-	"image/jpeg"
+	_ "image/jpeg" // register decoder buat jpegDimensions
 	"io"
 	"log"
 	"net/http"
@@ -234,48 +233,44 @@ func getLastLiveFrameHash() ([16]byte, bool) {
 }
 
 // =====================================================================
-// 🎯 FLIP HORIZONTAL (efek cermin)
-// Live view di main.go (StreamLiveView) selalu di-flip pakai flipJPEGHorizontal
-// sebelum dikirim ke frontend. Tapi hasil jepret dulu disimpan APA ADANYA,
-// jadi foto akhirnya kebalik dari live view (mirror).
-// Fungsi ini nyamain: frame yang disimpan juga di-flip sekali, biar hasil
-// jepret == live view. Logikanya sama persis kayak yang di main.go.
+// 🎯 MIRROR SEKARANG URUSAN CSS, BUKAN BACKEND
+// Dulu live view & hasil jepret sama-sama di-flip di sini (decode + encode
+// ulang JPEG). Buat file full-res 24 MP itu makan 1-2 detik per jepretan.
+// Sekarang SEMUA frame disimpan & dikirim apa adanya (natural); efek cermin
+// di layar diurus frontend pakai CSS `scaleX(-1)` — gratis, nggak ada
+// decode-encode sama sekali. File yang dicetak/di-Drive jadi natural
+// (tulisan di kaos nggak kebalik).
 // =====================================================================
-func flipCaptureHorizontal(frame []byte) []byte {
-	img, _, err := image.Decode(bytes.NewReader(frame))
-	if err != nil {
-		return frame // kalau gagal decode, balikin asli aja (jangan bikin error)
-	}
 
-	b := img.Bounds()
-	w := b.Dx()
-	h := b.Dy()
-	if w <= 1 || h <= 1 {
-		return frame
-	}
+// =====================================================================
+// 🖼️ CACHE FRAME STREAM TERAKHIR
+// Frame terakhir yang dikirim ke layar lewat /api/camera/stream. Dipakai
+// endpoint /api/camera/snapshot buat PREVIEW INSTAN: preview harus nampilin
+// frame yang PERSIS lagi tampil pas cekrek, bukan hasil fetch baru ke
+// digiCamControl yang waktunya bisa meleset (frame basi/beku).
+// =====================================================================
+var streamFrameCache = struct {
+	mu    sync.Mutex
+	frame []byte
+	at    time.Time
+}{}
 
-	// Baca/tulis langsung ke slice Pix, bukan lewat At()/Set(). Sejak yang
-	// diproses jadi file full-res (24 MP = 24 juta piksel), dua panggilan
-	// interface per piksel itu bikin tiap jepretan molor beberapa detik.
-	src := image.NewRGBA(image.Rect(0, 0, w, h))
-	draw.Draw(src, src.Bounds(), img, b.Min, draw.Src)
-	dst := image.NewRGBA(image.Rect(0, 0, w, h))
+func cacheStreamFrame(frame []byte) {
+	streamFrameCache.mu.Lock()
+	defer streamFrameCache.mu.Unlock()
+	streamFrameCache.frame = frame
+	streamFrameCache.at = time.Now()
+}
 
-	for y := 0; y < h; y++ {
-		srcRow := src.Pix[y*src.Stride : y*src.Stride+w*4]
-		dstRow := dst.Pix[y*dst.Stride : y*dst.Stride+w*4]
-		for x := 0; x < w; x++ {
-			// balik pixel kiri ↔ kanan
-			s := (w - 1 - x) * 4
-			copy(dstRow[x*4:x*4+4], srcRow[s:s+4])
-		}
+// GetLastStreamFrame balikin frame live view terakhir yang sempat diambil,
+// asalkan umurnya belum lewat maxAge. ok=false artinya belum ada / kelamaan.
+func GetLastStreamFrame(maxAge time.Duration) ([]byte, bool) {
+	streamFrameCache.mu.Lock()
+	defer streamFrameCache.mu.Unlock()
+	if streamFrameCache.frame == nil || time.Since(streamFrameCache.at) > maxAge {
+		return nil, false
 	}
-
-	var out bytes.Buffer
-	if err := jpeg.Encode(&out, dst, &jpeg.Options{Quality: 92}); err != nil {
-		return frame
-	}
-	return out.Bytes()
+	return streamFrameCache.frame, true
 }
 
 type CameraStatus struct {
@@ -327,10 +322,122 @@ func CheckCamera() (*CameraStatus, error) {
 // frontend juga sudah menyerialisasi lewat state isCapturing.
 var captureMu sync.Mutex
 
+// digiCamCaptureDir = folder di PC tempat digiCamControl NYIMPEN file jepretan
+// full-res (setting "Transfer → Save to PC" di digiCamControl). Dari env
+// DIGICAM_CAPTURE_DIR. Kosong = belum diset → jatuh ke jalur HTTP /lastcaptured.
+func digiCamCaptureDir() string {
+	return strings.TrimSpace(os.Getenv("DIGICAM_CAPTURE_DIR"))
+}
+
+func isJPEGName(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	return ext == ".jpg" || ext == ".jpeg"
+}
+
+// listJPEGNames kumpulin nama file JPEG yang ADA SEKARANG di dir (non-rekursif).
+// Dipanggil sebelum shutter — file jepretan baru = nama yang nggak ada di set ini.
+func listJPEGNames(dir string) map[string]struct{} {
+	set := make(map[string]struct{})
+	if dir == "" {
+		return set
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return set
+	}
+	for _, e := range entries {
+		if !e.IsDir() && isJPEGName(e.Name()) {
+			set[e.Name()] = struct{}{}
+		}
+	}
+	return set
+}
+
+// waitForNewFileOnDisk nungguin file JPEG BARU (nama yang belum ada di `before`)
+// muncul di folder capture digiCamControl DAN transfernya kelar (ukuran stabil).
+// Deteksi via nama file baru ini lebih anti-ketuker daripada fingerprint
+// /lastcaptured: nggak mungkin kejebak foto lama.
+func waitForNewFileOnDisk(dir string, before map[string]struct{}, timeout time.Duration) (string, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		entries, err := os.ReadDir(dir)
+		if err == nil {
+			var candidate string
+			var candMod time.Time
+			for _, e := range entries {
+				if e.IsDir() || !isJPEGName(e.Name()) {
+					continue
+				}
+				if _, seen := before[e.Name()]; seen {
+					continue
+				}
+				info, iErr := e.Info()
+				if iErr != nil {
+					continue
+				}
+				// Kalau ada beberapa file baru, ambil yang paling akhir ditulis.
+				if candidate == "" || info.ModTime().After(candMod) {
+					candMod = info.ModTime()
+					candidate = filepath.Join(dir, e.Name())
+				}
+			}
+			if candidate != "" && isFileSizeStable(candidate) {
+				return candidate, nil
+			}
+		}
+
+		if time.Now().After(deadline) {
+			return "", fmt.Errorf("timeout nunggu file capture baru di %s", dir)
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+}
+
+// isFileSizeStable true kalau ukuran file > 0 dan nggak berubah di dua pembacaan
+// berjarak ~120ms — tandanya digiCamControl udah selesai nulis/transfer.
+func isFileSizeStable(path string) bool {
+	info1, err := os.Stat(path)
+	if err != nil || info1.Size() == 0 {
+		return false
+	}
+	time.Sleep(120 * time.Millisecond)
+	info2, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info1.Size() == info2.Size()
+}
+
+// copyCapturedFile nyalin file full-res APA ADANYA (byte-for-byte, tanpa
+// re-encode) dari folder capture digiCamControl ke folder sesi.
+func copyCapturedFile(src, sessionDir string) (string, error) {
+	in, err := os.Open(src)
+	if err != nil {
+		return "", fmt.Errorf("gagal buka file capture: %w", err)
+	}
+	defer in.Close()
+
+	fileName := fmt.Sprintf("dslr_%d.jpg", time.Now().UnixMilli())
+	dstPath := filepath.Join(sessionDir, fileName)
+
+	out, err := os.Create(dstPath)
+	if err != nil {
+		return "", fmt.Errorf("gagal buat file: %w", err)
+	}
+	defer out.Close()
+
+	n, err := io.Copy(out, in)
+	if err != nil {
+		return "", fmt.Errorf("gagal salin file capture: %w", err)
+	}
+	log.Printf("📸 [DSLR] %s disalin dari folder capture (%d KB)", fileName, n/1024)
+	return dstPath, nil
+}
+
 // TriggerCapture trigger shutter Canon via digiCamControl
 func TriggerCapture(sessionID string) (string, error) {
 	// Serial: tunggu capture sebelumnya beneran kelar (file ke-transfer) baru
-	// fingerprint "sebelum jepret" diambil di bawah — biar deteksi file akurat.
+	// baseline "sebelum jepret" diambil di bawah — biar deteksi file akurat.
 	captureMu.Lock()
 	defer captureMu.Unlock()
 
@@ -344,6 +451,8 @@ func TriggerCapture(sessionID string) (string, error) {
 
 	beforeLive, _ := getLastLiveFrameHash()
 	beforeShot := lastCapturedFingerprint()
+	captureDir := digiCamCaptureDir()
+	beforeNames := listJPEGNames(captureDir)
 
 	_ = digiCamTryCommand([]string{root + "/?CMD=LiveViewWnd_Show"})
 
@@ -358,14 +467,29 @@ func TriggerCapture(sessionID string) (string, error) {
 		return "", fmt.Errorf("gagal trigger kamera: %w", err)
 	}
 
-	// Prioritas 1 — file jepretan beneran (full-res).
-	frame, err := waitForNewCapturedFile(beforeShot, captureFileTimeout)
+	// Prioritas 1 — file full-res langsung dari folder simpan digiCamControl
+	// (paling akurat: file baru = nama baru, nggak mungkin foto lama).
+	if captureDir != "" {
+		src, err := waitForNewFileOnDisk(captureDir, beforeNames, captureFileTimeout)
+		if err == nil {
+			return copyCapturedFile(src, sessionDir)
+		}
+		log.Printf("⚠️  [DSLR] file baru nggak muncul di folder capture (%v) — coba /lastcaptured", err)
+	}
+
+	// Prioritas 2 — /lastcaptured via HTTP dengan cek fingerprint + resolusi.
+	// Kalau jalur folder disk barusan udah nunggu penuh, di sini cukup sebentar.
+	httpTimeout := captureFileTimeout
+	if captureDir != "" {
+		httpTimeout = 2 * time.Second
+	}
+	frame, err := waitForNewCapturedFile(beforeShot, httpTimeout)
 	if err == nil {
 		return saveCaptureFrame(sessionDir, frame)
 	}
 	log.Printf("⚠️  [DSLR] file full-res nggak keambil (%v) — jatuh ke frame live view", err)
 
-	// Prioritas 2 — frame live view. Resolusinya jauh lebih kecil, tapi
+	// Prioritas 3 — frame live view. Resolusinya jauh lebih kecil, tapi
 	// mending foto seadanya daripada sesi customer gagal total.
 	frame, err = waitForFreshFrameAfterCapture(beforeLive, 2*time.Second)
 	if err == nil {
@@ -373,7 +497,7 @@ func TriggerCapture(sessionID string) (string, error) {
 	}
 
 	time.Sleep(120 * time.Millisecond)
-	return downloadLastCaptured(sessionID, sessionDir)
+	return downloadLastCaptured(sessionDir, beforeShot)
 }
 
 func waitForFreshFrameAfterCapture(beforeHash [16]byte, timeout time.Duration) ([]byte, error) {
@@ -396,10 +520,6 @@ func waitForFreshFrameAfterCapture(beforeHash [16]byte, timeout time.Duration) (
 }
 
 func saveCaptureFrame(sessionDir string, frame []byte) (string, error) {
-	// 🎯 Flip dulu biar hasil jepret sama kayak live view (yg di main.go udah di-flip).
-	//    Tanpa ini foto akhirnya kebalik (mirror) dari yang keliatan di layar.
-	frame = flipCaptureHorizontal(frame)
-
 	fileName := fmt.Sprintf("dslr_%d.jpg", time.Now().UnixMilli())
 	filePath := filepath.Join(sessionDir, fileName)
 
@@ -426,15 +546,23 @@ func saveCaptureFrame(sessionDir string, frame []byte) (string, error) {
 	return filePath, nil
 }
 
-func downloadLastCaptured(sessionID, sessionDir string) (string, error) {
+// downloadLastCaptured = fallback paling terakhir. Coba /lastcaptured dulu,
+// TAPI TOLAK kalau fingerprint-nya masih sama kayak sebelum jepret — itu foto
+// LAMA, dan nyimpen foto lama lebih parah daripada nyimpen frame preview
+// (inilah biang "foto di print-preview beda sama yang dijepret"). Kalau
+// ketahuan lama, pakai frame preview/live view aja: minimal itu pose yang
+// beneran keliatan di layar.
+func downloadLastCaptured(sessionDir string, beforeShot [16]byte) (string, error) {
 	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
 
-	// File jepretan duluan, preview/live view baru paling belakang — dulu
-	// kebalik, jadi yang kesimpen selalu frame kecil walau file full-res-nya
-	// sebenernya udah siap.
-	urls := append(lastCapturedURLs(nonce), previewFallbackURLs(nonce)...)
+	if body, err := digiCamReadFirstAvailable(lastCapturedURLs(nonce)); err == nil {
+		if frameFingerprint(body) != beforeShot {
+			return saveCaptureFrame(sessionDir, body)
+		}
+		log.Printf("⚠️  [DSLR] /lastcaptured masih foto lama — dilewati, pakai frame preview")
+	}
 
-	body, err := digiCamReadFirstAvailable(urls)
+	body, err := digiCamReadFirstAvailable(previewFallbackURLs(nonce))
 	if err != nil {
 		return "", fmt.Errorf("gagal download foto: %w", err)
 	}
@@ -448,6 +576,9 @@ func GetLiveViewFrame() ([]byte, error) {
 		return nil, err
 	}
 	captureLiveFrameHash(frame)
+	// Simpan sebagai "frame yang lagi tampil" — dipakai /api/camera/snapshot
+	// biar preview instan = persis yang keliatan di layar pas cekrek.
+	cacheStreamFrame(frame)
 	return frame, nil
 }
 

@@ -9,11 +9,11 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -21,27 +21,31 @@ import (
 // =====================================================================
 // Google Drive orchestration
 //
-// Alur (opsi B):
-//  - Foto mentah tiap kali di-jepret di /kamera → EnqueueRawPhotoUpload
-//    (background). Foto PERTAMA yang masuk bakal bikin folder induk +
-//    3 subfolder sekali (ensureSessionFolders), lalu foto2 nyusul.
-//  - Frame final di /result → FinalizeDrive (upload ke "Hasil frame"),
-//    balikin drive_url buat QR.
-//  - GIF live preview di /result → FinalizeLivePreviewGIF (upload ke
-//    "Hasil live preview").
+// Struktur: SATU folder flat per sesi (tanpa subfolder):
+//   Hasil foto kamu — <txn>/  ← QR ngarah ke sini
+//    ├── foto-1.jpg, foto-2.jpg, ...  (urut nomor jepretan)
+//    ├── strip.png                    (frame final dari /result)
+//    └── live-preview.gif             (GIF slideshow live preview)
 //
-// QR di frontend ngarah ke folder induk (DriveURL) — di dalamnya udah ada
-// "Hasil jepretan" (foto mentah), "Hasil frame" (frame final), dan
-// "Hasil live preview" (GIF slideshow).
+// Alur:
+//  - Tiap jepretan di /kamera → EnqueueRawPhotoUpload (background). Foto
+//    PERTAMA yang masuk bikin folder sesi sekali (ensureSessionFolder).
+//  - Frame final di /result → FinalizeDrive (upload strip + SWEEP ulang foto
+//    yang gagal upload pas sesi), balikin drive_url buat QR.
+//  - GIF live preview di /result → FinalizeLivePreviewGIF.
+//
+// Upload per-capture bisa aja gagal (koneksi/timeout). Itu BUKAN akhir:
+// foto yang drive_uploaded-nya masih false di-upload ulang pas FinalizeDrive
+// (sweepUnuploadedPhotos) — jadi jumlah di Drive == jumlah jepretan.
 // =====================================================================
 
 // ensureMu mencegah folder dibuat dobel kalau beberapa upload foto mentah jalan
 // barengan (tiap capture nge-fire goroutine sendiri).
 var ensureMu sync.Mutex
 
-// ensureSessionFolders idempotent: bikin folder induk + 3 subfolder SEKALI per
-// sesi lalu simpan ID + URL-nya ke DB. Kalau udah ada, langsung balikin.
-func ensureSessionFolders(txn string) (*models.PhotoSession, error) {
+// ensureSessionFolder idempotent: bikin folder sesi SEKALI lalu simpan ID +
+// URL-nya ke DB. Kalau udah ada, langsung balikin.
+func ensureSessionFolder(txn string) (*models.PhotoSession, error) {
 	ensureMu.Lock()
 	defer ensureMu.Unlock()
 
@@ -49,11 +53,7 @@ func ensureSessionFolders(txn string) (*models.PhotoSession, error) {
 	if err := database.DB.Where("transaction_id = ?", txn).First(&session).Error; err != nil {
 		return nil, fmt.Errorf("session %s gak ketemu: %w", txn, err)
 	}
-
-	// Udah pernah dibuat → pakai yang ada, tapi lengkapin dulu subfolder yang
-	// belum ada (sesi yang keburu jalan sebelum fitur live preview nongol).
 	if session.DriveFolderID != "" {
-		backfillLivePreviewFolder(&session)
 		return &session, nil
 	}
 	if !services.IsDriveEnabled() {
@@ -64,78 +64,56 @@ func ensureSessionFolders(txn string) (*models.PhotoSession, error) {
 	defer cancel()
 
 	name := fmt.Sprintf("Hasil foto kamu — %s", txn)
-	folders, err := services.CreateSessionFolders(ctx, name)
+	folderID, link, err := services.CreateSharedFolder(ctx, name)
 	if err != nil {
 		return &session, err
 	}
 
-	// Simpan ke DB.
 	if err := database.DB.Model(&session).Updates(map[string]interface{}{
-		"drive_folder_id":              folders.ParentID,
-		"drive_url":                    folders.WebViewLink,
-		"drive_jepretan_folder_id":     folders.JepretanID,
-		"drive_frame_folder_id":        folders.FrameID,
-		"drive_live_preview_folder_id": folders.LivePreviewID,
+		"drive_folder_id": folderID,
+		"drive_url":       link,
 	}).Error; err != nil {
 		log.Printf("⚠️  gagal simpan drive info (%s): %v", txn, err)
 	}
 
-	session.DriveFolderID = folders.ParentID
-	session.DriveURL = folders.WebViewLink
-	session.DriveJepretanFolderID = folders.JepretanID
-	session.DriveFrameFolderID = folders.FrameID
-	session.DriveLivePreviewFolderID = folders.LivePreviewID
+	session.DriveFolderID = folderID
+	session.DriveURL = link
 
-	log.Printf("📁 Drive folder sesi dibikin (%s): %s", txn, folders.WebViewLink)
+	log.Printf("📁 Drive folder sesi dibikin (%s): %s", txn, link)
 	return &session, nil
 }
 
-// backfillLivePreviewFolder bikin subfolder "Hasil live preview" buat sesi yang
-// folder induknya udah kebikin sebelum fitur ini ada. No-op kalau udah punya.
-// Dipanggil dari dalam ensureSessionFolders (udah kepegang ensureMu).
-func backfillLivePreviewFolder(session *models.PhotoSession) {
-	if session.DriveLivePreviewFolderID != "" || !services.IsDriveEnabled() {
-		return
+// rawPhotoDriveName nama file foto mentah di Drive: foto-<slot>.<ext>.
+func rawPhotoDriveName(slotNumber int, absPath string) string {
+	ext := strings.ToLower(filepath.Ext(absPath))
+	if ext == "" {
+		ext = ".jpg"
 	}
-
-	ctx, cancel := services.DriveContext()
-	defer cancel()
-
-	id, err := services.CreateSubfolder(ctx, session.DriveFolderID, services.FolderLivePreview)
-	if err != nil {
-		log.Printf("⚠️  gagal bikin subfolder %q (%s): %v", services.FolderLivePreview, session.TransactionID, err)
-		return
-	}
-
-	if err := database.DB.Model(session).Update("drive_live_preview_folder_id", id).Error; err != nil {
-		log.Printf("⚠️  gagal simpan ID subfolder live preview (%s): %v", session.TransactionID, err)
-	}
-	session.DriveLivePreviewFolderID = id
-	log.Printf("📁 subfolder %q nyusul dibikin (%s)", services.FolderLivePreview, session.TransactionID)
+	return fmt.Sprintf("foto-%d%s", slotNumber, ext)
 }
 
-// EnqueueRawPhotoUpload upload SATU foto mentah ke subfolder "Hasil jepretan"
-// secara non-blocking (dipanggil dari CapturePhoto/CaptureUpload). No-op kalau
-// Drive nggak aktif. `absPath` = path file di disk (bukan URL). `photoID` boleh
-// 0 kalau nggak mau nandain drive_uploaded.
-func EnqueueRawPhotoUpload(txn string, photoID uint, absPath string) {
+// EnqueueRawPhotoUpload upload SATU foto mentah ke folder sesi secara
+// non-blocking (dipanggil dari CapturePhoto/CaptureUpload). No-op kalau Drive
+// nggak aktif. `absPath` = path file di disk (bukan URL). Kalau gagal, foto
+// bakal ke-sapu ulang pas FinalizeDrive (lihat sweepUnuploadedPhotos).
+func EnqueueRawPhotoUpload(txn string, photoID uint, absPath string, slotNumber int) {
 	if !services.IsDriveEnabled() || txn == "" || absPath == "" {
 		return
 	}
 	go func() {
-		session, err := ensureSessionFolders(txn)
-		if err != nil || session.DriveJepretanFolderID == "" {
-			log.Printf("⚠️  drive folder belum siap (%s): %v — foto di-skip", txn, err)
+		session, err := ensureSessionFolder(txn)
+		if err != nil || session.DriveFolderID == "" {
+			log.Printf("⚠️  drive folder belum siap (%s): %v — foto nyusul pas finalize", txn, err)
 			return
 		}
 
 		ctx, cancel := services.DriveContext()
 		defer cancel()
 
-		name := filepath.Base(absPath)
-		if err := services.UploadFileToFolder(ctx, session.DriveJepretanFolderID,
+		name := rawPhotoDriveName(slotNumber, absPath)
+		if err := services.UploadFileToFolder(ctx, session.DriveFolderID,
 			services.DriveUpload{LocalPath: absPath, Name: name}); err != nil {
-			log.Printf("⚠️  upload foto mentah ke Drive gagal (%s, %s): %v", txn, name, err)
+			log.Printf("⚠️  upload foto mentah ke Drive gagal (%s, %s): %v — nyusul pas finalize", txn, name, err)
 			return
 		}
 
@@ -146,9 +124,57 @@ func EnqueueRawPhotoUpload(txn string, photoID uint, absPath string) {
 	}()
 }
 
+// sweepUnuploadedPhotos JARING PENGAMAN: upload ulang semua foto sesi yang
+// drive_uploaded-nya masih false (upload per-capture-nya sempat gagal, atau
+// Drive baru aktif di tengah sesi). Dipanggil background dari FinalizeDrive.
+// Inilah yang mastiin 12 jepretan = 12 file di Drive.
+func sweepUnuploadedPhotos(txn string) {
+	session, err := ensureSessionFolder(txn)
+	if err != nil || session.DriveFolderID == "" {
+		log.Printf("⚠️  sweep drive gagal (%s): folder belum siap — %v", txn, err)
+		return
+	}
+
+	var photos []models.Photo
+	if err := database.DB.
+		Where("session_id = ? AND drive_uploaded = ?", session.ID, false).
+		Order("slot_number ASC").Find(&photos).Error; err != nil {
+		log.Printf("⚠️  sweep drive gagal query foto (%s): %v", txn, err)
+		return
+	}
+	if len(photos) == 0 {
+		return
+	}
+	log.Printf("🧹 sweep drive (%s): %d foto belum keupload, dicoba ulang", txn, len(photos))
+
+	for _, p := range photos {
+		diskPath := photoURLToDiskPath(p.PhotoPath)
+		if diskPath == "" {
+			continue // foto dummy (picsum) — nggak ada file lokal
+		}
+		if _, err := os.Stat(diskPath); err != nil {
+			log.Printf("⚠️  sweep drive (%s): file %s gak ketemu di disk", txn, diskPath)
+			continue
+		}
+
+		ctx, cancel := services.DriveContext()
+		name := rawPhotoDriveName(p.SlotNumber, diskPath)
+		err := services.UploadFileToFolder(ctx, session.DriveFolderID,
+			services.DriveUpload{LocalPath: diskPath, Name: name})
+		cancel()
+		if err != nil {
+			log.Printf("⚠️  sweep drive (%s, %s): masih gagal — %v", txn, name, err)
+			continue
+		}
+		database.DB.Model(&models.Photo{}).Where("id = ?", p.ID).Update("drive_uploaded", true)
+		log.Printf("☁️  sweep drive (%s): %s akhirnya keupload", txn, name)
+	}
+}
+
 // FinalizeDrive — POST /api/photo-session/by-transaction/:txn/drive/finalize
 // Body JSON: { "image": "data:image/png;base64,...." }  (frame final dari result)
-// Upload frame ke subfolder "Hasil frame", lalu balikin drive_url buat QR.
+// Upload strip ke folder sesi + sweep ulang foto yang belum keupload, lalu
+// balikin drive_url buat QR.
 func FinalizeDrive(c *gin.Context) {
 	txn := c.Param("transaction_id")
 
@@ -171,8 +197,8 @@ func FinalizeDrive(c *gin.Context) {
 		return
 	}
 
-	session, err := ensureSessionFolders(txn)
-	if err != nil || session.DriveFrameFolderID == "" {
+	session, err := ensureSessionFolder(txn)
+	if err != nil || session.DriveFolderID == "" {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("drive folder belum siap: %v", err)})
 		return
 	}
@@ -180,13 +206,17 @@ func FinalizeDrive(c *gin.Context) {
 	ctx, cancel := services.DriveContext()
 	defer cancel()
 
-	name := fmt.Sprintf("frame-final-%d.%s", time.Now().Unix(), ext)
-	if err := services.UploadBytesToFolder(ctx, session.DriveFrameFolderID, name, data); err != nil {
+	name := fmt.Sprintf("strip.%s", ext)
+	if err := services.UploadBytesToFolder(ctx, session.DriveFolderID, name, data); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "upload frame ke drive gagal: " + err.Error()})
 		return
 	}
+	log.Printf("☁️  strip final → Drive (%s): %s", txn, name)
 
-	log.Printf("☁️  frame final → Drive (%s): %s", txn, name)
+	// Jaring pengaman: foto jepretan yang upload per-capture-nya gagal
+	// disapu ulang di background — jangan blokir respons QR.
+	go sweepUnuploadedPhotos(txn)
+
 	c.JSON(http.StatusOK, gin.H{
 		"drive_url": session.DriveURL,
 		"ready":     session.DriveURL != "",
@@ -235,8 +265,8 @@ func FinalizeLivePreviewGIF(c *gin.Context) {
 		return
 	}
 
-	session, err := ensureSessionFolders(txn)
-	if err != nil || session.DriveLivePreviewFolderID == "" {
+	session, err := ensureSessionFolder(txn)
+	if err != nil || session.DriveFolderID == "" {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("drive folder belum siap: %v", err)})
 		return
 	}
@@ -244,8 +274,8 @@ func FinalizeLivePreviewGIF(c *gin.Context) {
 	ctx, cancel := services.DriveContext()
 	defer cancel()
 
-	name := fmt.Sprintf("live-preview-%d.gif", time.Now().Unix())
-	if err := services.UploadBytesToFolder(ctx, session.DriveLivePreviewFolderID, name, data); err != nil {
+	name := "live-preview.gif"
+	if err := services.UploadBytesToFolder(ctx, session.DriveFolderID, name, data); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "upload GIF ke drive gagal: " + err.Error()})
 		return
 	}

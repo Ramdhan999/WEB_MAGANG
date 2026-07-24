@@ -274,6 +274,10 @@ function SesiFotoContent() {
   const [unlockProgress, setUnlockProgress] = useState(0);
 
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+  // Frame live view DSLR dikirim backend APA ADANYA (natural) — efek cermin
+  // diurus CSS scaleX(-1). Preview snapshot DSLR ikut di-mirror biar sama
+  // persis kayak yang barusan keliatan; foto tersimpan/print tetap natural.
+  const [previewMirrored, setPreviewMirrored] = useState(false);
   const previewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewPhotoRef = useRef<string | null>(null);
 
@@ -572,10 +576,11 @@ function SesiFotoContent() {
   // ==========================================================================
   // 🖼️ PREVIEW FOTO — 3 detik, lalu tutup siklus
   // ==========================================================================
-  const showPreview = (photoUrl: string) => {
-    if (DEBUG_STATE) console.log("🖼️ [PREVIEW] show:", photoUrl);
+  const showPreview = (photoUrl: string, mirrored = false) => {
+    if (DEBUG_STATE) console.log("🖼️ [PREVIEW] show:", photoUrl, mirrored ? "(mirror)" : "");
 
     setPreviewPhoto(photoUrl);
+    setPreviewMirrored(mirrored);
     previewPhotoRef.current = photoUrl;
     goPhase("preview");
 
@@ -910,10 +915,13 @@ function SesiFotoContent() {
     //    bener di versi lama. Yang "nunggu" cuma izin shot berikutnya, BUKAN preview.
     // ========================================================================
     if (!isDummy) {
-      // Preview instan dari frame live view — tampil duluan, nggak nungguin capture.
+      // Preview instan = frame TERAKHIR yang tampil di layar pas cekrek
+      // (backend nge-cache frame stream, bukan fetch baru ke digiCamControl —
+      // jadi pose preview pasti sama kayak yang barusan keliatan).
+      // mirrored=true biar orientasinya sama kayak live view yang di-mirror CSS.
       setIsCountingDown(false);
       isCountingDownRef.current = false;
-      showPreview(`${BACKEND_URL}/api/camera/snapshot?t=${Date.now()}`);
+      showPreview(`${BACKEND_URL}/api/camera/snapshot?t=${Date.now()}`, true);
 
       // 🔒 isCapturing TETAP true di sini (di-set di startSession) → startSession
       //    blokir jepretan berikutnya sampai capture ini kelar (lihat finally).
@@ -1143,6 +1151,7 @@ function SesiFotoContent() {
                   ref={imgRef}
                   src={isCameraActive ? `${BACKEND_URL}/api/camera/stream` : undefined}
                   className="w-full h-full object-cover"
+                  style={{ transform: "scaleX(-1)" }}
                   alt="Live View DSLR"
                 />
               )}
@@ -1177,6 +1186,7 @@ function SesiFotoContent() {
                   src={previewPhoto}
                   alt="Hasil foto"
                   className="w-full h-full object-cover"
+                  style={previewMirrored ? { transform: "scaleX(-1)" } : undefined}
                   onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
                 />
               </div>

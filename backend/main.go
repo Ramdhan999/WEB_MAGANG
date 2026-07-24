@@ -5,12 +5,8 @@ import (
 	"backend-photobooth/database"
 	"backend-photobooth/models"
 	"backend-photobooth/services"
-	"bytes"
 	"encoding/base64"
 	"fmt"
-	"image"
-	"image/draw"
-	"image/jpeg"
 	"io"
 	"net/http"
 	"os"
@@ -24,39 +20,10 @@ import (
 	"github.com/midtrans/midtrans-go"
 )
 
-// --- FUNGSI BUAT NGE-FLIP GAMBAR (EFEK CERMIN) ---
-func flipJPEGHorizontal(frame []byte) []byte {
-	img, _, err := image.Decode(bytes.NewReader(frame))
-	if err != nil {
-		return frame
-	}
-
-	b := img.Bounds()
-	w := b.Dx()
-	h := b.Dy()
-	if w <= 1 || h <= 1 {
-		return frame
-	}
-
-	src := image.NewRGBA(b)
-	draw.Draw(src, b, img, b.Min, draw.Src)
-	dst := image.NewRGBA(b)
-
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			// Rumus membalik pixel kiri ke kanan
-			dst.Set(x+b.Min.X, y+b.Min.Y, src.At((w-1-x)+b.Min.X, y+b.Min.Y))
-		}
-	}
-
-	var out bytes.Buffer
-	if err := jpeg.Encode(&out, dst, &jpeg.Options{Quality: 85}); err != nil {
-		return frame
-	}
-	return out.Bytes()
-}
-
 // --- FUNGSI BUAT NGE-STREAM KE NEXT.JS ---
+// Frame dikirim APA ADANYA (natural, tanpa flip). Efek cermin di layar diurus
+// frontend pakai CSS `scaleX(-1)` — dulu tiap frame di-decode + encode ulang
+// cuma buat mirror, buang-buang CPU dan bikin hasil jepret ikut ke-flip.
 func StreamLiveView(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary=frame")
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
@@ -73,9 +40,6 @@ func StreamLiveView(w http.ResponseWriter, r *http.Request) {
 				time.Sleep(500 * time.Millisecond)
 				continue
 			}
-
-			// Panggil fungsi flip sebelum dikirim
-			frame = flipJPEGHorizontal(frame)
 
 			fmt.Fprintf(w, "--frame\r\nContent-Type: image/jpeg\r\n\r\n")
 			w.Write(frame)
@@ -241,16 +205,21 @@ func main() {
 	})
 
 	// Snapshot 1 frame live view (JPEG tunggal). Dipakai /kamera buat PREVIEW INSTAN
-	// tepat setelah shutter, TANPA nunggu file full-res (~6 dtk). File full-res
-	// tetap disimpan + diupload ke Drive di jalur /capture yang jalan di background.
-	// Di-flip biar orientasinya sama persis kayak feed live view.
+	// tepat setelah shutter, TANPA nunggu file full-res (~beberapa dtk).
+	// PENTING: utamakan frame TERAKHIR YANG UDAH TAMPIL di layar (cache dari
+	// /api/camera/stream) — bukan fetch baru ke digiCamControl. Fetch baru bisa
+	// balapan sama shutter dan dapet frame basi/beku → preview "gatau ngambilnya
+	// kapan". Fetch langsung cuma fallback kalau stream lagi nggak jalan.
 	r.GET("/api/camera/snapshot", func(c *gin.Context) {
-		frame, err := services.GetLiveViewFrame()
-		if err != nil {
-			c.JSON(503, gin.H{"error": "live view belum siap: " + err.Error()})
-			return
+		frame, ok := services.GetLastStreamFrame(2 * time.Second)
+		if !ok {
+			var err error
+			frame, err = services.GetLiveViewFrame()
+			if err != nil {
+				c.JSON(503, gin.H{"error": "live view belum siap: " + err.Error()})
+				return
+			}
 		}
-		frame = flipJPEGHorizontal(frame)
 		c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 		c.Data(200, "image/jpeg", frame)
 	})

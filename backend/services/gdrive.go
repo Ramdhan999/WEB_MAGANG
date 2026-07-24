@@ -21,11 +21,11 @@ import (
 // =====================================================================
 // Integrasi Google Drive: upload hasil sesi ke Drive akun Gmail booth.
 //
-// Struktur per sesi:
-//   Hasil foto kamu — <txn>        (di-share "anyone with link" → reader) ← QR
-//    ├── Hasil jepretan/           (semua foto mentah dari /kamera)
-//    ├── Hasil frame/              (frame final hasil edit di /result)
-//    └── Hasil live preview/       (GIF animasi dari slideshow live preview)
+// Struktur per sesi: SATU folder flat (di-share "anyone with link" → QR):
+//   Hasil foto kamu — <txn>/
+//    ├── foto-1.jpg, foto-2.jpg, ...   (foto mentah, urut nomor jepretan)
+//    ├── strip.png                     (frame final hasil edit di /result)
+//    └── live-preview.gif              (GIF animasi slideshow live preview)
 //
 // Auth: OAuth2 refresh-token akun Gmail (lihat cmd/gdrive-token). Scope minimal
 // `drive.file` — app cuma bisa lihat/ubah file yang dia sendiri bikin.
@@ -41,27 +41,10 @@ const (
 	driveFolderMIME = "application/vnd.google-apps.folder"
 )
 
-// Nama subfolder per sesi. Dipakai bareng sama drive_controller (termasuk
-// buat backfill sesi lama), jadi jangan di-hardcode ulang di tempat lain.
-const (
-	FolderJepretan    = "Hasil jepretan"
-	FolderFrame       = "Hasil frame"
-	FolderLivePreview = "Hasil live preview"
-)
-
 // DriveUpload = satu file lokal yang mau di-upload + nama tampil di Drive.
 type DriveUpload struct {
 	LocalPath string // path file di disk
 	Name      string // nama file yang tampil di Drive
-}
-
-// SessionFolders = hasil bikin struktur folder 1 sesi.
-type SessionFolders struct {
-	ParentID      string // folder induk "Hasil foto kamu — <txn>"
-	WebViewLink   string // link folder induk (buat QR)
-	JepretanID    string // subfolder "Hasil jepretan"
-	FrameID       string // subfolder "Hasil frame"
-	LivePreviewID string // subfolder "Hasil live preview"
 }
 
 // IsDriveEnabled true kalau kredensial OAuth Drive lengkap di env.
@@ -99,63 +82,27 @@ func DriveContext() (context.Context, context.CancelFunc) {
 }
 
 // =====================================================================
-// HIGH-LEVEL: bikin struktur folder 1 sesi
+// HIGH-LEVEL: bikin folder 1 sesi
 // =====================================================================
 
-// CreateSessionFolders bikin folder induk (di-share publik) + 3 subfolder
-// "Hasil jepretan", "Hasil frame", & "Hasil live preview". Subfolder mewarisi
-// izin share dari induk, jadi nggak perlu di-share lagi satu-satu. Dipanggil
-// SEKALI per sesi.
-func CreateSessionFolders(ctx context.Context, parentName string) (*SessionFolders, error) {
+// CreateSharedFolder bikin SATU folder sesi yang di-share publik (anyone with
+// link → reader). Semua file sesi (foto-N, strip, live-preview.gif) masuk ke
+// folder ini langsung, tanpa subfolder. Dipanggil SEKALI per sesi.
+func CreateSharedFolder(ctx context.Context, name string) (id, webViewLink string, err error) {
 	if !IsDriveEnabled() {
-		return nil, fmt.Errorf("google drive belum dikonfigurasi")
+		return "", "", fmt.Errorf("google drive belum dikonfigurasi")
 	}
 	client := driveClient(ctx)
 	rootParent := os.Getenv("GOOGLE_DRIVE_FOLDER_ID") // opsional
 
-	parentID, link, err := createDriveFolder(ctx, client, parentName, rootParent)
+	id, webViewLink, err = createDriveFolder(ctx, client, name, rootParent)
 	if err != nil {
-		return nil, fmt.Errorf("gagal bikin folder induk: %w", err)
+		return "", "", fmt.Errorf("gagal bikin folder sesi: %w", err)
 	}
-	// Share folder induk: anyone with link → reader. Isi di dalamnya mewarisi.
-	if err := setAnyoneReader(ctx, client, parentID); err != nil {
-		return nil, fmt.Errorf("gagal share folder induk: %w", err)
+	if err := setAnyoneReader(ctx, client, id); err != nil {
+		return "", "", fmt.Errorf("gagal share folder sesi: %w", err)
 	}
-
-	jepretanID, _, err := createDriveFolder(ctx, client, FolderJepretan, parentID)
-	if err != nil {
-		return nil, fmt.Errorf("gagal bikin subfolder %s: %w", FolderJepretan, err)
-	}
-	frameID, _, err := createDriveFolder(ctx, client, FolderFrame, parentID)
-	if err != nil {
-		return nil, fmt.Errorf("gagal bikin subfolder %s: %w", FolderFrame, err)
-	}
-	livePreviewID, _, err := createDriveFolder(ctx, client, FolderLivePreview, parentID)
-	if err != nil {
-		return nil, fmt.Errorf("gagal bikin subfolder %s: %w", FolderLivePreview, err)
-	}
-
-	return &SessionFolders{
-		ParentID:      parentID,
-		WebViewLink:   link,
-		JepretanID:    jepretanID,
-		FrameID:       frameID,
-		LivePreviewID: livePreviewID,
-	}, nil
-}
-
-// CreateSubfolder bikin satu subfolder di dalam folder induk yang udah ada.
-// Dipakai buat backfill sesi lama yang folder induknya dibikin sebelum
-// subfolder "Hasil live preview" ada.
-func CreateSubfolder(ctx context.Context, parentID, name string) (string, error) {
-	if !IsDriveEnabled() {
-		return "", fmt.Errorf("google drive belum dikonfigurasi")
-	}
-	if parentID == "" {
-		return "", fmt.Errorf("folder induk kosong")
-	}
-	id, _, err := createDriveFolder(ctx, driveClient(ctx), name, parentID)
-	return id, err
+	return id, webViewLink, nil
 }
 
 // =====================================================================

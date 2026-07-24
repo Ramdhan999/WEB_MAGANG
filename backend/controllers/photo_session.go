@@ -155,7 +155,7 @@ func CapturePhoto(c *gin.Context) {
 	// 🎯 Upload foto mentah ke Google Drive (background, non-blocking).
 	//    Skip buat dummy (nggak ada file fisik di disk).
 	if !isDummy && diskPath != "" {
-		EnqueueRawPhotoUpload(session.TransactionID, photo.ID, diskPath)
+		EnqueueRawPhotoUpload(session.TransactionID, photo.ID, diskPath, slotNumber)
 	}
 
 	c.JSON(200, gin.H{
@@ -229,7 +229,7 @@ func CaptureUpload(c *gin.Context) {
 	}
 
 	// 🎯 Upload foto webcam (sim) ke Google Drive juga (background, non-blocking).
-	EnqueueRawPhotoUpload(session.TransactionID, photo.ID, diskPath)
+	EnqueueRawPhotoUpload(session.TransactionID, photo.ID, diskPath, slotNumber)
 
 	fmt.Printf("📸 [WEBCAM] Photo saved: %s\n", diskPath)
 	c.JSON(200, gin.H{

@@ -213,6 +213,9 @@ function TestimoniContent() {
               <img
                 src={isOperatorMode ? `${BACKEND_URL}/api/camera/stream` : undefined}
                 className="absolute inset-0 w-full h-full object-cover opacity-80"
+                // Backend sekarang kirim frame natural (tanpa flip) — efek
+                // cermin diurus CSS, sama kayak di /kamera.
+                style={{ transform: "scaleX(-1)" }}
                 crossOrigin="anonymous"
                 alt="Live View Operator"
               />

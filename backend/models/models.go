@@ -49,11 +49,11 @@ type PhotoSession struct {
 	PaymentStatus   string `gorm:"type:varchar(20);default:'none'" json:"payment_status"` // pending, paid, failed, cancelled
 
 	// ─── Google Drive (upload hasil sesi) ⬅️ TAMBAH ───
-	DriveFolderID         string `gorm:"type:varchar(100)" json:"drive_folder_id"`          // ID folder induk "Hasil foto kamu — <txn>"
-	DriveURL              string `gorm:"type:varchar(255)" json:"drive_url"`                // webViewLink folder induk (dipakai buat QR)
-	DriveJepretanFolderID    string `gorm:"type:varchar(100)" json:"drive_jepretan_folder_id"`     // subfolder "Hasil jepretan"
-	DriveFrameFolderID       string `gorm:"type:varchar(100)" json:"drive_frame_folder_id"`        // subfolder "Hasil frame"
-	DriveLivePreviewFolderID string `gorm:"type:varchar(100)" json:"drive_live_preview_folder_id"` // subfolder "Hasil live preview"
+	// Struktur sekarang 1 folder flat per sesi: foto-N + strip + live-preview.gif
+	// langsung di folder ini (subfolder "Hasil jepretan/frame/live preview" udah
+	// nggak dipakai; kolom lamanya dibiarin di DB, nggak diapa-apain).
+	DriveFolderID string `gorm:"type:varchar(100)" json:"drive_folder_id"` // ID folder sesi "Hasil foto kamu — <txn>"
+	DriveURL      string `gorm:"type:varchar(255)" json:"drive_url"`       // webViewLink folder sesi (dipakai buat QR)
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
