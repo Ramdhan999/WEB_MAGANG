@@ -910,16 +910,22 @@ function SesiFotoContent() {
     //    bener di versi lama. Yang "nunggu" cuma izin shot berikutnya, BUKAN preview.
     // ========================================================================
     if (!isDummy) {
-      // Preview instan dari frame live view — tampil duluan, nggak nungguin capture.
+      // 1️⃣ PLACEHOLDER INSTAN dari snapshot live view — biar layar nggak nge-freeze
+      //    pas nunggu file full-res. Ini BUKAN foto yang disimpan, cuma penahan
+      //    sementara (sengaja TANPA timer tutup, biar preview nggak keburu ilang).
       setIsCountingDown(false);
       isCountingDownRef.current = false;
-      showPreview(`${BACKEND_URL}/api/camera/snapshot?t=${Date.now()}`);
+      const snapUrl = `${BACKEND_URL}/api/camera/snapshot?t=${Date.now()}`;
+      setPreviewPhoto(snapUrl);
+      previewPhotoRef.current = snapUrl;
+      goPhase("preview");
 
-      // 🔒 isCapturing TETAP true di sini (di-set di startSession) → startSession
-      //    blokir jepretan berikutnya sampai capture ini kelar (lihat finally).
+      // 2️⃣ Ambil file FULL-RES (yang BENERAN disimpan + masuk Drive). isCapturing
+      //    tetap true → jepretan berikutnya di-serialize sampai capture ini kelar.
       const t0 = performance.now();
       const ctrl = new AbortController();
       const safety = setTimeout(() => ctrl.abort(), 25000); // pengaman kalau backend nyangkut
+      let swapped = false;
       try {
         const res = await fetch(`${BACKEND_URL}/api/photo-session/${session.id}/capture`, {
           method: "POST",
@@ -932,6 +938,25 @@ function SesiFotoContent() {
         } else {
           console.log("📸 DSLR Jepret!", data);
           if (data.total_photos !== undefined) setFotoDiambil(data.total_photos);
+
+          const photoPath = data.photo_url
+            || data.photo_path
+            || data.photo?.photo_path
+            || data.photo?.photo_url
+            || (data.session?.photos && data.session.photos.length > 0
+              ? data.session.photos[data.session.photos.length - 1].photo_path
+              : null);
+
+          if (photoPath) {
+            const fullUrl = photoPath.startsWith("http") ? photoPath : `${BACKEND_URL}${photoPath}`;
+            // 3️⃣ GANTI preview ke foto full-res ASLI → yang keliatan di preview
+            //    == yang muncul di print-preview. showPreview() sekaligus mulai
+            //    timer tutup 3 detik.
+            showPreview(fullUrl);
+            swapped = true;
+          } else if (DEBUG_STATE) {
+            console.warn("🖼️ [PREVIEW] photo path gak ketemu di response:", data);
+          }
         }
       } catch (err) {
         console.error("Capture DSLR error:", err);
@@ -940,6 +965,8 @@ function SesiFotoContent() {
         // Capture kelar → lepas izin buat jepretan berikutnya.
         setIsCapturing(false);
         isCapturingRef.current = false;
+        // Kalau full-res gagal didapat, tutup preview pakai placeholder (3 dtk → gesture).
+        if (!swapped) showPreview(snapUrl);
       }
       return;
     }
