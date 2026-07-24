@@ -897,36 +897,50 @@ function SesiFotoContent() {
     }
 
     // ========================================================================
-    // 🚀 DSLR ASLI — PREVIEW INSTAN, capture full-res JALAN DI BACKGROUND.
-    //    Dulu di sini nunggu fetch /capture selesai (~6 dtk: shutter → kamera
-    //    tulis kartu → transfer USB) baru preview naik → layar nyangkut lama.
-    //    Sekarang: preview langsung pakai snapshot 1 frame live view (yang lagi
-    //    tampil = pose orangnya), lalu /capture ditembak tanpa ditunggu. File
-    //    full-res + upload Drive tetap jalan penuh di backend, cuma nggak nahan UI.
+    // 🚀 DSLR ASLI — PREVIEW INSTAN, tapi capture full-res DI-SERIALIZE.
+    //    Preview langsung pakai snapshot live view (pose orangnya) → user nggak
+    //    nunggu. TAPI `isCapturing` SENGAJA dibiarin TRUE sampai /capture beneran
+    //    kelar, biar jepretan BERIKUTNYA nggak nembak shutter sebelum file shot
+    //    ini selesai ditransfer.
+    //
+    //    ⚠️ Kenapa wajib: capture DSLR ~6 dtk, preview cuma 3 dtk. Kalau izin
+    //    jepret dilepas pas preview kelar (3 dtk), dua TriggerCapture tumpang
+    //    tindih → rebutan file /lastcaptured → foto ketuker/"delay" & sebagian
+    //    ilang (12 jepret → 9 masuk Drive). Serialisasi ini yang bikin gdrive
+    //    bener di versi lama. Yang "nunggu" cuma izin shot berikutnya, BUKAN preview.
     // ========================================================================
     if (!isDummy) {
-      // Preview instan dari frame live view — tidak ada lagi jeda "Menyimpan foto...".
+      // Preview instan dari frame live view — tampil duluan, nggak nungguin capture.
       setIsCountingDown(false);
       isCountingDownRef.current = false;
-      setIsCapturing(false);
-      isCapturingRef.current = false;
       showPreview(`${BACKEND_URL}/api/camera/snapshot?t=${Date.now()}`);
 
-      // Tembak capture full-res di belakang layar. Responsnya (~6 dtk) cuma dipakai
-      // buat update counter "foto diambil" — preview & balik-ke-gesture nggak nungguin.
+      // 🔒 isCapturing TETAP true di sini (di-set di startSession) → startSession
+      //    blokir jepretan berikutnya sampai capture ini kelar (lihat finally).
       const t0 = performance.now();
-      fetch(`${BACKEND_URL}/api/photo-session/${session.id}/capture`, { method: "POST" })
-        .then(async (res) => {
-          const data = await res.json().catch(() => ({}));
-          if (DEBUG_STATE) console.log(`⏱️ [CAPTURE] full-res kelar di background ${Math.round(performance.now() - t0)} ms`);
-          if (!res.ok) {
-            console.error("Capture DSLR gagal (background):", data.error);
-            return;
-          }
-          console.log("📸 DSLR Jepret! (background)", data);
+      const ctrl = new AbortController();
+      const safety = setTimeout(() => ctrl.abort(), 25000); // pengaman kalau backend nyangkut
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/photo-session/${session.id}/capture`, {
+          method: "POST",
+          signal: ctrl.signal,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (DEBUG_STATE) console.log(`⏱️ [CAPTURE] full-res kelar ${Math.round(performance.now() - t0)} ms`);
+        if (!res.ok) {
+          console.error("Capture DSLR gagal:", data.error);
+        } else {
+          console.log("📸 DSLR Jepret!", data);
           if (data.total_photos !== undefined) setFotoDiambil(data.total_photos);
-        })
-        .catch((err) => console.error("Capture DSLR error (background):", err));
+        }
+      } catch (err) {
+        console.error("Capture DSLR error:", err);
+      } finally {
+        clearTimeout(safety);
+        // Capture kelar → lepas izin buat jepretan berikutnya.
+        setIsCapturing(false);
+        isCapturingRef.current = false;
+      }
       return;
     }
 

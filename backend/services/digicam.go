@@ -321,8 +321,19 @@ func CheckCamera() (*CameraStatus, error) {
 	}, nil
 }
 
+// captureMu memastikan cuma SATU capture DSLR jalan pada satu waktu. Tanpa ini,
+// dua TriggerCapture yang tumpang tindih bakal saling rebut file /lastcaptured
+// (fingerprint ketuker) → foto ketuker/ilang. Pengaman lapis-2 di sisi backend;
+// frontend juga sudah menyerialisasi lewat state isCapturing.
+var captureMu sync.Mutex
+
 // TriggerCapture trigger shutter Canon via digiCamControl
 func TriggerCapture(sessionID string) (string, error) {
+	// Serial: tunggu capture sebelumnya beneran kelar (file ke-transfer) baru
+	// fingerprint "sebelum jepret" diambil di bawah — biar deteksi file akurat.
+	captureMu.Lock()
+	defer captureMu.Unlock()
+
 	sessionDir := filepath.Join(StoragePath, "sessions", sessionID)
 	if err := os.MkdirAll(sessionDir, 0755); err != nil {
 		return "", fmt.Errorf("gagal buat direktori: %w", err)
