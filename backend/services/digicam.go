@@ -480,11 +480,14 @@ func waitForNewFileOnDisk(dir string, before map[string]struct{}, timeout time.D
 			}
 			return nil
 		})
-		if candidate != "" && isFileSizeStable(candidate) {
+		if candidate != "" && isFileSizeStable(candidate) && isCompleteJPEGFile(candidate) {
 			return candidate, nil
 		}
 
 		if time.Now().After(deadline) {
+			if candidate != "" {
+				return "", fmt.Errorf("file baru ADA (%s) tapi belum utuh — transfer masih nyicil", filepath.Base(candidate))
+			}
 			if rawFound != "" {
 				return "", fmt.Errorf("timeout di %s — yang ketemu file RAW (%s), bukan JPEG. "+
 					"Ganti Image Quality kamera / Compression di digiCamControl ke JPEG", dir, filepath.Base(rawFound))
@@ -508,6 +511,43 @@ func isFileSizeStable(path string) bool {
 		return false
 	}
 	return info1.Size() == info2.Size()
+}
+
+// isCompleteJPEGFile ngecek file JPEG udah UTUH: diawali marker SOI (FFD8) dan
+// ada marker EOI (FFD9) di ekor file. digiCamControl bisa bikin file duluan
+// (nama nongol di Explorer) terus isinya di-cicil pelan — ukuran stabil sesaat
+// BUKAN jaminan kelar; EOI baru ada kalau transfer beneran tuntas.
+func isCompleteJPEGFile(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil || info.Size() < 4 {
+		return false
+	}
+
+	head := make([]byte, 2)
+	if _, err := io.ReadFull(f, head); err != nil || head[0] != 0xFF || head[1] != 0xD8 {
+		return false
+	}
+
+	tailLen := int64(64)
+	if info.Size() < tailLen {
+		tailLen = info.Size()
+	}
+	tail := make([]byte, tailLen)
+	if _, err := f.ReadAt(tail, info.Size()-tailLen); err != nil {
+		return false
+	}
+	for i := 0; i < len(tail)-1; i++ {
+		if tail[i] == 0xFF && tail[i+1] == 0xD9 {
+			return true
+		}
+	}
+	return false
 }
 
 // copyCapturedFile nyalin file full-res APA ADANYA (byte-for-byte, tanpa
@@ -558,6 +598,17 @@ func TriggerCapture(sessionID string) (string, *RecoveryPending, error) {
 	beforeShot := lastCapturedFingerprint()
 	captureDir := digiCamCaptureDir()
 	beforeNames := listJPEGNames(captureDir)
+
+	// 🩺 Diagnosa: pastiin folder capture BENERAN kebaca backend. Kalau angka
+	// di sini 0 padahal Explorer nampilin ratusan file, berarti path/akses
+	// DIGICAM_CAPTURE_DIR-nya yang bermasalah — bukan transfernya.
+	if captureDir != "" {
+		if _, sErr := os.Stat(captureDir); sErr != nil {
+			log.Printf("🚨 [DSLR] DIGICAM_CAPTURE_DIR nggak kebaca (%s): %v", captureDir, sErr)
+		} else {
+			log.Printf("📂 [DSLR] folder capture kebaca: %d file JPEG (baseline sebelum jepret)", len(beforeNames))
+		}
+	}
 
 	_ = digiCamTryCommand([]string{root + "/?CMD=LiveViewWnd_Show"})
 
@@ -799,7 +850,10 @@ type RecoveryPending struct {
 	onDone    func(upgraded bool)
 }
 
-const recoverTimeout = 90 * time.Second
+// Timeout recovery sengaja PANJANG: di EOS 1100D transfer bisa baru tuntas
+// pas live view berhenti total (akhir sesi) — bisa menit-an setelah jepret.
+// Worker cuma ngecek tiap 2 dtk, jadi nunggu lama itu murah.
+const recoverTimeout = 10 * time.Minute
 
 var (
 	recoverMu       sync.Mutex
@@ -893,7 +947,12 @@ func fullResRecoveryLoop() {
 			}
 			return nil
 		})
-		if oldestPath == "" || !isFileSizeStable(oldestPath) {
+		if oldestPath == "" {
+			continue
+		}
+		// File baru ketemu tapi transfernya belum tuntas → tunggu tick
+		// berikutnya. EOI (penutup JPEG) = satu-satunya tanda pasti kelar.
+		if !isFileSizeStable(oldestPath) || !isCompleteJPEGFile(oldestPath) {
 			continue
 		}
 
