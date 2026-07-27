@@ -51,10 +51,12 @@ const (
 	// /lastcaptured).
 	captureFileTimeout = 6 * time.Second
 
-	// Jatah nunggu file nongol di folder capture digiCamControl. Sengaja lebih
-	// panjang: transfer USB bisa lelet banget karena rebutan jalur sama stream
-	// live view yang jalan terus. Nunggu ini di background — user nggak ngerasain.
-	captureDiskTimeout = 15 * time.Second
+	// Jatah nunggu SINKRON file nongol di folder capture. Sengaja pendek:
+	// di kamera lawas (EOS 1100D) transfer bisa 30-90 dtk — yang segitu
+	// ditangkep jalur RECOVERY di background (fullResRecoveryLoop), bukan
+	// ditungguin di sini. Tunggu sinkron cuma buat nangkep transfer cepat,
+	// biar jepretan berikutnya nggak kelamaan ke-blok.
+	captureDiskTimeout = 5 * time.Second
 )
 
 // lastCapturedURLs = endpoint yang ngasih file jepretan beneran.
@@ -534,8 +536,11 @@ func copyCapturedFile(src, sessionDir string) (string, error) {
 	return dstPath, nil
 }
 
-// TriggerCapture trigger shutter Canon via digiCamControl
-func TriggerCapture(sessionID string) (string, error) {
+// TriggerCapture trigger shutter Canon via digiCamControl.
+// Return kedua (*RecoveryPending) TIDAK nil kalau yang kesimpen baru frame
+// kecil dan file full-res-nya masih bisa nyusul dari folder capture —
+// caller wajib lanjutin ke StartFullResRecovery.
+func TriggerCapture(sessionID string) (string, *RecoveryPending, error) {
 	// Serial: tunggu capture sebelumnya beneran kelar (file ke-transfer) baru
 	// baseline "sebelum jepret" diambil di bawah — biar deteksi file akurat.
 	captureMu.Lock()
@@ -543,7 +548,7 @@ func TriggerCapture(sessionID string) (string, error) {
 
 	sessionDir := filepath.Join(StoragePath, "sessions", sessionID)
 	if err := os.MkdirAll(sessionDir, 0755); err != nil {
-		return "", fmt.Errorf("gagal buat direktori: %w", err)
+		return "", nil, fmt.Errorf("gagal buat direktori: %w", err)
 	}
 
 	root := digiCamRootURL()
@@ -564,7 +569,17 @@ func TriggerCapture(sessionID string) (string, error) {
 		root + "/?CMD=Capture",
 		base + "/capture",
 	}); err != nil {
-		return "", fmt.Errorf("gagal trigger kamera: %w", err)
+		return "", nil, fmt.Errorf("gagal trigger kamera: %w", err)
+	}
+	shotTime := time.Now()
+
+	// newPending = tiket recovery buat foto yang kesimpen versi kecil:
+	// file full-res-nya bakal diintai di background (lihat fullResRecoveryLoop).
+	newPending := func(savedPath string) *RecoveryPending {
+		if captureDir == "" || savedPath == "" {
+			return nil
+		}
+		return &RecoveryPending{smallPath: savedPath, baseline: beforeNames, shotAt: shotTime}
 	}
 
 	// 📸 Simpan frame yang lagi tampil TEPAT setelah perintah shutter sukses —
@@ -605,7 +620,8 @@ func TriggerCapture(sessionID string) (string, error) {
 	if captureDir != "" {
 		src, err := waitForNewFileOnDisk(captureDir, beforeNames, captureDiskTimeout)
 		if err == nil {
-			return copyCapturedFile(src, sessionDir)
+			p, cErr := copyCapturedFile(src, sessionDir)
+			return p, nil, cErr
 		}
 		log.Printf("⚠️  [DSLR] file baru nggak muncul di folder capture (%v) — coba /lastcaptured", err)
 	}
@@ -618,29 +634,42 @@ func TriggerCapture(sessionID string) (string, error) {
 	}
 	frame, err := waitForNewCapturedFile(beforeShot, httpTimeout)
 	if err == nil {
-		return saveCaptureFrame(sessionDir, frame)
+		p, sErr := saveCaptureFrame(sessionDir, frame)
+		return p, nil, sErr
 	}
 	log.Printf("⚠️  [DSLR] file full-res nggak keambil (%v) — jatuh ke frame live view", err)
 
 	// Prioritas 3 — frame MOMEN SHUTTER (yang sama kayak preview). Resolusinya
 	// kecil, tapi pose-nya BENER. Dulu fallback ini ngambil frame live view
-	// "sekarang" — padahal "sekarang" itu udah ~6 detik setelah jepret (abis
-	// nunggu file full-res), orangnya udah bubar pose → foto di print-preview
-	// beda sama preview. Frame momen shutter nggak mungkin geser.
+	// "sekarang" — padahal "sekarang" itu udah beberapa detik setelah jepret,
+	// orangnya udah bubar pose. Frame momen shutter nggak mungkin geser.
+	// File full-res-nya bakal nyusul lewat recovery (newPending).
 	if shutterFrame != nil {
 		log.Printf("⚠️  [DSLR] pakai frame momen shutter sebagai foto (resolusi live view)")
-		return saveCaptureFrame(sessionDir, shutterFrame)
+		p, sErr := saveCaptureFrame(sessionDir, shutterFrame)
+		if sErr != nil {
+			return "", nil, sErr
+		}
+		return p, newPending(p), nil
 	}
 
 	// Prioritas 4 — frame live view terbaru (kalau frame momen shutter pun
 	// nggak sempet kesimpen). Mending foto seadanya daripada sesi gagal total.
 	frame, err = waitForFreshFrameAfterCapture(beforeLive, 2*time.Second)
 	if err == nil {
-		return saveCaptureFrame(sessionDir, frame)
+		p, sErr := saveCaptureFrame(sessionDir, frame)
+		if sErr != nil {
+			return "", nil, sErr
+		}
+		return p, newPending(p), nil
 	}
 
 	time.Sleep(120 * time.Millisecond)
-	return downloadLastCaptured(sessionDir, beforeShot)
+	p, dErr := downloadLastCaptured(sessionDir, beforeShot)
+	if dErr != nil {
+		return "", nil, dErr
+	}
+	return p, newPending(p), nil
 }
 
 func waitForFreshFrameAfterCapture(beforeHash [16]byte, timeout time.Duration) ([]byte, error) {
@@ -748,4 +777,157 @@ func fetchLiveViewFrameBytes() ([]byte, error) {
 		return nil, fmt.Errorf("gagal ambil liveview: %w", err)
 	}
 	return frame, nil
+}
+
+// =====================================================================
+// 🔁 RECOVERY FULL-RES TELAT
+// Bukti lapangan (EOS 1100D): transfer file full-res ke PC bisa molor
+// 30-90 detik — nggak peduli live view di-pause atau enggak. Nungguin
+// segitu secara sinkron bakal ngeblok jepretan berikutnya. Jadi:
+// capture langsung balikin frame momen shutter (kecil, pose bener),
+// lalu recovery ini ngintai folder capture di background — begitu file
+// aslinya nongol, file kecil di folder sesi DITIMPA full-res (path sama,
+// jadi print-preview/frame/GIF otomatis dapet versi bagus), baru setelah
+// itu foto diupload ke Drive (sekali, langsung versi final).
+// =====================================================================
+
+// RecoveryPending = satu foto yang nunggu di-upgrade ke full-res.
+type RecoveryPending struct {
+	smallPath string              // file kecil di folder sesi yang mau ditimpa
+	baseline  map[string]struct{} // isi folder capture SEBELUM shutter (full path)
+	shotAt    time.Time
+	onDone    func(upgraded bool)
+}
+
+const recoverTimeout = 90 * time.Second
+
+var (
+	recoverMu       sync.Mutex
+	recoverQueue    []*RecoveryPending
+	recoverConsumed = map[string]struct{}{} // file capture yang udah dipasangin foto
+	recoverWorker   sync.Once
+)
+
+// RecoveryInFlight true kalau foto ini masih nunggu upgrade — dipakai sweep
+// Drive biar nggak keburu upload versi kecilnya.
+func RecoveryInFlight(photoPath string) bool {
+	recoverMu.Lock()
+	defer recoverMu.Unlock()
+	for _, p := range recoverQueue {
+		if p.smallPath == photoPath {
+			return true
+		}
+	}
+	return false
+}
+
+// StartFullResRecovery daftarin foto buat diintai. onDone dipanggil SEKALI:
+// upgraded=true kalau file berhasil ditimpa full-res, false kalau nyerah.
+// Aman dipanggil dengan p == nil (langsung onDone(false)).
+func StartFullResRecovery(p *RecoveryPending, onDone func(upgraded bool)) {
+	if p == nil {
+		if onDone != nil {
+			onDone(false)
+		}
+		return
+	}
+	p.onDone = onDone
+	recoverMu.Lock()
+	recoverQueue = append(recoverQueue, p)
+	recoverMu.Unlock()
+	recoverWorker.Do(func() { go fullResRecoveryLoop() })
+}
+
+// fullResRecoveryLoop = worker tunggal. Entri diproses FIFO — capture
+// di-serialize (captureMu), jadi file baru yang nongol duluan pasti punya
+// jepretan yang lebih dulu.
+func fullResRecoveryLoop() {
+	for {
+		time.Sleep(2 * time.Second)
+
+		recoverMu.Lock()
+		var head *RecoveryPending
+		if len(recoverQueue) > 0 {
+			head = recoverQueue[0]
+		}
+		recoverMu.Unlock()
+		if head == nil {
+			continue
+		}
+
+		if time.Since(head.shotAt) > recoverTimeout {
+			log.Printf("⚠️  [RECOVERY] nyerah nunggu full-res buat %s — foto tetep versi kecil", filepath.Base(head.smallPath))
+			popRecovery(head, false)
+			continue
+		}
+
+		dir := digiCamCaptureDir()
+		if dir == "" {
+			popRecovery(head, false)
+			continue
+		}
+
+		// Cari file BARU paling tua (bukan baseline, belum kepake foto lain).
+		var oldestPath string
+		var oldestMod time.Time
+		_ = filepath.WalkDir(dir, func(pth string, d os.DirEntry, wErr error) error {
+			if wErr != nil || d.IsDir() || !isJPEGName(d.Name()) {
+				return nil
+			}
+			if _, seen := head.baseline[pth]; seen {
+				return nil
+			}
+			recoverMu.Lock()
+			_, used := recoverConsumed[pth]
+			recoverMu.Unlock()
+			if used {
+				return nil
+			}
+			info, iErr := d.Info()
+			if iErr != nil {
+				return nil
+			}
+			if oldestPath == "" || info.ModTime().Before(oldestMod) {
+				oldestPath = pth
+				oldestMod = info.ModTime()
+			}
+			return nil
+		})
+		if oldestPath == "" || !isFileSizeStable(oldestPath) {
+			continue
+		}
+
+		data, rErr := os.ReadFile(oldestPath)
+		if rErr != nil {
+			continue // mungkin masih ditulis — coba tick berikutnya
+		}
+		if wErr := os.WriteFile(head.smallPath, data, 0644); wErr != nil {
+			log.Printf("⚠️  [RECOVERY] gagal nimpa %s: %v", head.smallPath, wErr)
+			popRecovery(head, false)
+			continue
+		}
+
+		recoverMu.Lock()
+		recoverConsumed[oldestPath] = struct{}{}
+		recoverMu.Unlock()
+
+		if w, h, dErr := jpegDimensions(data); dErr == nil {
+			log.Printf("📸 [RECOVERY] %s di-upgrade ke full-res %dx%d (%d KB, dari %s)",
+				filepath.Base(head.smallPath), w, h, len(data)/1024, filepath.Base(oldestPath))
+		} else {
+			log.Printf("📸 [RECOVERY] %s di-upgrade dari %s", filepath.Base(head.smallPath), filepath.Base(oldestPath))
+		}
+		popRecovery(head, true)
+	}
+}
+
+func popRecovery(p *RecoveryPending, upgraded bool) {
+	recoverMu.Lock()
+	if len(recoverQueue) > 0 && recoverQueue[0] == p {
+		recoverQueue = recoverQueue[1:]
+	}
+	recoverMu.Unlock()
+	if p.onDone != nil {
+		p.onDone(upgraded)
+	}
 }

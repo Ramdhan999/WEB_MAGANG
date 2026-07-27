@@ -182,14 +182,16 @@ func main() {
 
 	// --- ENDPOINT DSLR (Panggil dari services/digicam.go) ---
 
-	// 2. Trigger Jepret DSLR
+	// 2. Trigger Jepret DSLR (endpoint tes manual — di luar alur sesi)
 	r.POST("/api/camera/capture", func(c *gin.Context) {
 		sessionID := fmt.Sprintf("SESS-%d", time.Now().Unix())
-		path, err := services.TriggerCapture(sessionID)
+		path, recovery, err := services.TriggerCapture(sessionID)
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
+		// Tetep intai full-res-nya biar file tes ikut keupgrade.
+		services.StartFullResRecovery(recovery, nil)
 		c.JSON(200, gin.H{
 			"status":  "success",
 			"path":    path,

@@ -128,17 +128,19 @@ func CapturePhoto(c *gin.Context) {
 
 	var urlPath string
 	var diskPath string // 🎯 path disk mentah — dipakai buat upload ke Drive (kosong kalau dummy)
+	var recovery *services.RecoveryPending
 
 	if isDummy {
 		urlPath = fmt.Sprintf("https://picsum.photos/seed/%d/1200/800", time.Now().UnixNano())
 		fmt.Printf("📸 [DUMMY] Photo created: %s\n", urlPath)
 	} else {
-		dp, err := services.TriggerCapture(session.TransactionID)
+		dp, rec, err := services.TriggerCapture(session.TransactionID)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "Gagal trigger kamera: " + err.Error()})
 			return
 		}
 		diskPath = dp
+		recovery = rec
 		urlPath = convertDiskPathToURL(diskPath)
 	}
 
@@ -154,8 +156,24 @@ func CapturePhoto(c *gin.Context) {
 
 	// 🎯 Upload foto mentah ke Google Drive (background, non-blocking).
 	//    Skip buat dummy (nggak ada file fisik di disk).
+	//    Kalau foto ini masih nunggu upgrade full-res (recovery), upload
+	//    DITUNDA sampai recovery kelar — biar yang masuk Drive langsung
+	//    versi final, bukan versi kecil yang bakal ketimpa.
 	if !isDummy && diskPath != "" {
-		EnqueueRawPhotoUpload(session.TransactionID, photo.ID, diskPath, slotNumber)
+		if recovery != nil {
+			txn := session.TransactionID
+			photoID := photo.ID
+			dp := diskPath
+			slot := slotNumber
+			services.StartFullResRecovery(recovery, func(upgraded bool) {
+				if !upgraded {
+					fmt.Printf("⚠️  [RECOVERY] slot %d tetep versi kecil — diupload apa adanya\n", slot)
+				}
+				EnqueueRawPhotoUpload(txn, photoID, dp, slot)
+			})
+		} else {
+			EnqueueRawPhotoUpload(session.TransactionID, photo.ID, diskPath, slotNumber)
+		}
 	}
 
 	c.JSON(200, gin.H{

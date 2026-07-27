@@ -152,6 +152,11 @@ func sweepUnuploadedPhotos(txn string) {
 		if diskPath == "" {
 			continue // foto dummy (picsum) — nggak ada file lokal
 		}
+		if services.RecoveryInFlight(diskPath) {
+			// Masih nunggu upgrade full-res — recovery yang bakal upload
+			// sendiri begitu kelar. Jangan keburu kirim versi kecil.
+			continue
+		}
 		if _, err := os.Stat(diskPath); err != nil {
 			log.Printf("⚠️  sweep drive (%s): file %s gak ketemu di disk", txn, diskPath)
 			continue
