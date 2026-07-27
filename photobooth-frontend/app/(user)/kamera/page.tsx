@@ -27,12 +27,13 @@ const JARI_MULAI_GAP_MS = 5000;
 const SHOT_TIMEOUT_MS = 45000;
 
 // 🔌 Reconnect feed gesture setelah tiap siklus jepret.
-//    CATATAN JUJUR: belum terbukti perlu. Diagnosis terakhir menunjukkan yang
-//    bikin layar "nyangkut" adalah jeda capture DSLR (~6 detik), bukan feed
-//    Flask yang beku. Kalau setelah overlay "Menyimpan foto..." dipasang
-//    tampilan sudah mulus, set GESTURE_RECONNECT = false untuk memangkas
-//    600ms tambahan di akhir tiap siklus.
-const GESTURE_RECONNECT = true;
+//    DIMATIKAN (2026-07-27): kebukti jadi biang feed gesture BLANK di
+//    tengah/akhir sesi — tiap jepret mutus+nyambung ulang koneksi MJPEG,
+//    koneksi lama nyangkut jadi zombie di Flask, dan setelah beberapa kali
+//    koneksi baru dapet "sambungan sukses tapi tanpa frame" (blank, tanpa
+//    error, deteksi tetap jalan). Koneksi sekarang dibiarin hidup terus;
+//    kalau beneran error ada auto-retry 3 detik di bawah.
+const GESTURE_RECONNECT = false;
 const GESTURE_KILL_MS = 250;
 const GESTURE_WARMUP_MS = 350;
 
@@ -399,6 +400,19 @@ function SesiFotoContent() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shotPhase]);
+
+  // 🔁 Auto-retry feed gesture: kalau koneksi video_feed beneran putus/error,
+  //    sambung ulang tiap 3 detik sampai nyambung. Dulu error = nyangkut di
+  //    "Menyambungkan kamera..." selamanya (nggak ada retry sama sekali).
+  useEffect(() => {
+    if (!flaskVideoError) return;
+    const t = setTimeout(() => {
+      if (DEBUG_STATE) console.log("🔁 [GESTURE] feed error — coba sambung ulang...");
+      setGestureKey((k) => k + 1);
+      setFlaskVideoError(false);
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [flaskVideoError]);
 
   // ===== PRELOAD AUDIO =====
   useEffect(() => {
