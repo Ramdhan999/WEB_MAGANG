@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -360,6 +361,13 @@ func CheckCamera() (*CameraStatus, error) {
 // frontend juga sudah menyerialisasi lewat state isCapturing.
 var captureMu sync.Mutex
 
+// captureBusy true selama TriggerCapture lagi nungguin file jepretan.
+// Selama true, stream live view TIDAK narik frame baru dari digiCamControl
+// (dilayani dari cache) — live view & transfer file rebutan satu jalur
+// USB/PTP; kalau tetep di-poll ~10 fps, transfer full-res di kamera lawas
+// bisa molor belasan detik bahkan nggak kelar-kelar.
+var captureBusy atomic.Bool
+
 // digiCamCaptureDir = folder di PC tempat digiCamControl NYIMPEN file jepretan
 // full-res (setting "Transfer → Save to PC" di digiCamControl). Dari env
 // DIGICAM_CAPTURE_DIR. Kosong = belum diset → jatuh ke jalur HTTP /lastcaptured.
@@ -537,6 +545,12 @@ func TriggerCapture(sessionID string) (string, error) {
 		setShotPreview(frame)
 	}
 
+	// 🚦 Bebasin jalur USB buat transfer file: mulai titik ini sampai capture
+	//    kelar, stream live view dilayani dari cache (nggak nge-poll
+	//    digiCamControl), biar kamera bisa fokus ngirim file full-res ke PC.
+	captureBusy.Store(true)
+	defer captureBusy.Store(false)
+
 	// Prioritas 1 — file full-res langsung dari folder simpan digiCamControl
 	// (paling akurat: file baru = nama baru, nggak mungkin foto lama).
 	if captureDir != "" {
@@ -651,6 +665,15 @@ func downloadLastCaptured(sessionDir string, beforeShot [16]byte) (string, error
 
 // GetLiveViewFrame ambil 1 frame dari live view Canon
 func GetLiveViewFrame() ([]byte, error) {
+	// 🚦 Lagi nunggu file jepretan? Jangan ganggu digiCamControl — layani dari
+	//    frame cache biar USB fokus transfer file full-res. Layar aman: momen
+	//    ini ketutup overlay preview.
+	if captureBusy.Load() {
+		if frame, ok := GetLastStreamFrame(30 * time.Second); ok {
+			return frame, nil
+		}
+	}
+
 	frame, err := fetchLiveViewFrameBytes()
 	if err != nil {
 		return nil, err
