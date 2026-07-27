@@ -545,17 +545,25 @@ func TriggerCapture(sessionID string) (string, error) {
 		setShotPreview(frame)
 	}
 
-	// 🚦 Bebasin jalur USB buat transfer file: stream live view dilayani dari
-	//    cache (nggak nge-poll digiCamControl), biar kamera fokus ngirim file
-	//    full-res ke PC. DIBATESIN 6 DETIK: kalau segitu belum kelar juga,
-	//    live view dilepas lagi — jangan sampai layar DSLR beku lama pas user
-	//    udah mau jepretan berikutnya. 6 dtk USB kosong harusnya lebih dari
-	//    cukup buat transfer yang sehat (normalnya 1-3 dtk).
+	// 🚦 Bebasin kamera buat transfer file. Dua-duanya perlu:
+	//    (1) captureBusy → backend berhenti nge-poll frame (dilayani cache);
+	//    (2) LiveViewWnd_Hide → jendela live view digiCamControl DITUTUP.
+	//    Poin (2) yang krusial: jendela itu narik frame dari kamera terus
+	//    SENDIRI walau backend diem — di USB lawas (EOS 1100D) itu bikin
+	//    transfer file nggak kebagian jalur sama sekali.
+	//    DIBATESIN 6 DETIK: kalau belum kelar juga, live view dibuka lagi
+	//    biar layar DSLR nggak beku pas user mau jepretan berikutnya.
 	captureBusy.Store(true)
-	unfreeze := time.AfterFunc(6*time.Second, func() { captureBusy.Store(false) })
+	_ = digiCamTryCommand([]string{root + "/?CMD=LiveViewWnd_Hide"})
+	var resumeOnce sync.Once
+	resumeLiveView := func() {
+		captureBusy.Store(false)
+		_ = digiCamTryCommand([]string{root + "/?CMD=LiveViewWnd_Show"})
+	}
+	unfreeze := time.AfterFunc(6*time.Second, func() { resumeOnce.Do(resumeLiveView) })
 	defer func() {
 		unfreeze.Stop()
-		captureBusy.Store(false)
+		resumeOnce.Do(resumeLiveView)
 	}()
 
 	// Prioritas 1 — file full-res langsung dari folder simpan digiCamControl
