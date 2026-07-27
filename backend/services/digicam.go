@@ -545,11 +545,18 @@ func TriggerCapture(sessionID string) (string, error) {
 		setShotPreview(frame)
 	}
 
-	// 🚦 Bebasin jalur USB buat transfer file: mulai titik ini sampai capture
-	//    kelar, stream live view dilayani dari cache (nggak nge-poll
-	//    digiCamControl), biar kamera bisa fokus ngirim file full-res ke PC.
+	// 🚦 Bebasin jalur USB buat transfer file: stream live view dilayani dari
+	//    cache (nggak nge-poll digiCamControl), biar kamera fokus ngirim file
+	//    full-res ke PC. DIBATESIN 6 DETIK: kalau segitu belum kelar juga,
+	//    live view dilepas lagi — jangan sampai layar DSLR beku lama pas user
+	//    udah mau jepretan berikutnya. 6 dtk USB kosong harusnya lebih dari
+	//    cukup buat transfer yang sehat (normalnya 1-3 dtk).
 	captureBusy.Store(true)
-	defer captureBusy.Store(false)
+	unfreeze := time.AfterFunc(6*time.Second, func() { captureBusy.Store(false) })
+	defer func() {
+		unfreeze.Stop()
+		captureBusy.Store(false)
+	}()
 
 	// Prioritas 1 — file full-res langsung dari folder simpan digiCamControl
 	// (paling akurat: file baru = nama baru, nggak mungkin foto lama).
