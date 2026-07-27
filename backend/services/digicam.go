@@ -46,8 +46,14 @@ const (
 	// masih 2400px, jadi 1600 aman di tengah.
 	minCaptureWidth = 1600
 
-	// Jatah nunggu kamera selesai nulis + transfer file ke PC.
+	// Jatah nunggu kamera selesai nulis + transfer file ke PC (jalur HTTP
+	// /lastcaptured).
 	captureFileTimeout = 6 * time.Second
+
+	// Jatah nunggu file nongol di folder capture digiCamControl. Sengaja lebih
+	// panjang: transfer USB bisa lelet banget karena rebutan jalur sama stream
+	// live view yang jalan terus. Nunggu ini di background — user nggak ngerasain.
+	captureDiskTimeout = 15 * time.Second
 )
 
 // lastCapturedURLs = endpoint yang ngasih file jepretan beneran.
@@ -366,59 +372,82 @@ func isJPEGName(name string) bool {
 	return ext == ".jpg" || ext == ".jpeg"
 }
 
-// listJPEGNames kumpulin nama file JPEG yang ADA SEKARANG di dir (non-rekursif).
-// Dipanggil sebelum shutter — file jepretan baru = nama yang nggak ada di set ini.
+// isRAWName buat deteksi kamera yang ternyata nyimpen RAW, bukan JPEG —
+// biar pesan error-nya langsung nunjuk ke setting Image Quality kamera.
+func isRAWName(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2", ".dng":
+		return true
+	}
+	return false
+}
+
+// listJPEGNames kumpulin path file JPEG yang ADA SEKARANG di dir, REKURSIF —
+// digiCamControl bisa aja naruh hasil di subfolder (template session per
+// tanggal, dll). Dipanggil sebelum shutter; file jepretan baru = path yang
+// nggak ada di set ini.
 func listJPEGNames(dir string) map[string]struct{} {
 	set := make(map[string]struct{})
 	if dir == "" {
 		return set
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return set
-	}
-	for _, e := range entries {
-		if !e.IsDir() && isJPEGName(e.Name()) {
-			set[e.Name()] = struct{}{}
+	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil // folder nggak kebaca? skip aja, jangan gagalin scan
 		}
-	}
+		if !d.IsDir() && isJPEGName(d.Name()) {
+			set[p] = struct{}{}
+		}
+		return nil
+	})
 	return set
 }
 
-// waitForNewFileOnDisk nungguin file JPEG BARU (nama yang belum ada di `before`)
-// muncul di folder capture digiCamControl DAN transfernya kelar (ukuran stabil).
-// Deteksi via nama file baru ini lebih anti-ketuker daripada fingerprint
-// /lastcaptured: nggak mungkin kejebak foto lama.
+// waitForNewFileOnDisk nungguin file JPEG BARU (path yang belum ada di `before`)
+// muncul di folder capture digiCamControl (rekursif, subfolder ikut) DAN
+// transfernya kelar (ukuran stabil). Deteksi via file baru ini lebih
+// anti-ketuker daripada fingerprint /lastcaptured: nggak mungkin kejebak foto
+// lama. Kalau yang nongol malah file RAW, error-nya bilang eksplisit.
 func waitForNewFileOnDisk(dir string, before map[string]struct{}, timeout time.Duration) (string, error) {
 	deadline := time.Now().Add(timeout)
+	rawFound := ""
 	for {
-		entries, err := os.ReadDir(dir)
-		if err == nil {
-			var candidate string
-			var candMod time.Time
-			for _, e := range entries {
-				if e.IsDir() || !isJPEGName(e.Name()) {
-					continue
-				}
-				if _, seen := before[e.Name()]; seen {
-					continue
-				}
-				info, iErr := e.Info()
-				if iErr != nil {
-					continue
-				}
-				// Kalau ada beberapa file baru, ambil yang paling akhir ditulis.
-				if candidate == "" || info.ModTime().After(candMod) {
-					candMod = info.ModTime()
-					candidate = filepath.Join(dir, e.Name())
-				}
+		var candidate string
+		var candMod time.Time
+		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
 			}
-			if candidate != "" && isFileSizeStable(candidate) {
-				return candidate, nil
+			if isRAWName(d.Name()) {
+				rawFound = p // dicatat buat pesan diagnosa pas timeout
+				return nil
 			}
+			if !isJPEGName(d.Name()) {
+				return nil
+			}
+			if _, seen := before[p]; seen {
+				return nil
+			}
+			info, iErr := d.Info()
+			if iErr != nil {
+				return nil
+			}
+			// Kalau ada beberapa file baru, ambil yang paling akhir ditulis.
+			if candidate == "" || info.ModTime().After(candMod) {
+				candMod = info.ModTime()
+				candidate = p
+			}
+			return nil
+		})
+		if candidate != "" && isFileSizeStable(candidate) {
+			return candidate, nil
 		}
 
 		if time.Now().After(deadline) {
+			if rawFound != "" {
+				return "", fmt.Errorf("timeout di %s — yang ketemu file RAW (%s), bukan JPEG. "+
+					"Ganti Image Quality kamera / Compression di digiCamControl ke JPEG", dir, filepath.Base(rawFound))
+			}
 			return "", fmt.Errorf("timeout nunggu file capture baru di %s", dir)
 		}
 		time.Sleep(150 * time.Millisecond)
@@ -500,15 +529,18 @@ func TriggerCapture(sessionID string) (string, error) {
 	}
 
 	// 📸 Simpan frame yang lagi tampil TEPAT setelah perintah shutter sukses —
-	//    ini momen jepret sesungguhnya. Frontend nge-swap preview ke frame ini.
+	//    ini momen jepret sesungguhnya. Frontend nge-swap preview ke frame ini,
+	//    dan frame ini juga jadi fallback terakhir kalau file asli gagal diambil.
+	var shutterFrame []byte
 	if frame, ok := GetLastStreamFrame(2 * time.Second); ok {
+		shutterFrame = frame
 		setShotPreview(frame)
 	}
 
 	// Prioritas 1 — file full-res langsung dari folder simpan digiCamControl
 	// (paling akurat: file baru = nama baru, nggak mungkin foto lama).
 	if captureDir != "" {
-		src, err := waitForNewFileOnDisk(captureDir, beforeNames, captureFileTimeout)
+		src, err := waitForNewFileOnDisk(captureDir, beforeNames, captureDiskTimeout)
 		if err == nil {
 			return copyCapturedFile(src, sessionDir)
 		}
@@ -527,8 +559,18 @@ func TriggerCapture(sessionID string) (string, error) {
 	}
 	log.Printf("⚠️  [DSLR] file full-res nggak keambil (%v) — jatuh ke frame live view", err)
 
-	// Prioritas 3 — frame live view. Resolusinya jauh lebih kecil, tapi
-	// mending foto seadanya daripada sesi customer gagal total.
+	// Prioritas 3 — frame MOMEN SHUTTER (yang sama kayak preview). Resolusinya
+	// kecil, tapi pose-nya BENER. Dulu fallback ini ngambil frame live view
+	// "sekarang" — padahal "sekarang" itu udah ~6 detik setelah jepret (abis
+	// nunggu file full-res), orangnya udah bubar pose → foto di print-preview
+	// beda sama preview. Frame momen shutter nggak mungkin geser.
+	if shutterFrame != nil {
+		log.Printf("⚠️  [DSLR] pakai frame momen shutter sebagai foto (resolusi live view)")
+		return saveCaptureFrame(sessionDir, shutterFrame)
+	}
+
+	// Prioritas 4 — frame live view terbaru (kalau frame momen shutter pun
+	// nggak sempet kesimpen). Mending foto seadanya daripada sesi gagal total.
 	frame, err = waitForFreshFrameAfterCapture(beforeLive, 2*time.Second)
 	if err == nil {
 		return saveCaptureFrame(sessionDir, frame)
