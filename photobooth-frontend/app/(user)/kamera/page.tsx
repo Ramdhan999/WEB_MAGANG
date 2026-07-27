@@ -745,6 +745,9 @@ function SesiFotoContent() {
         // ✅ Preset terkonfirmasi → pindah ke DSLR
         if (shotPhaseRef.current === "idle" && !endingCycleRef.current && s.preset_seq > prev.preset) {
           playSound("4");
+          // Layar DSLR mau tampil → suruh backend nyalain lagi live view
+          // (kalau lagi masa hening transfer file jepretan sebelumnya).
+          fetch(`${BACKEND_URL}/api/camera/resume-liveview`, { method: "POST" }).catch(() => { });
           goPhase("framing");
           const picked = s.current_preset;
           if (typeof picked === 'number') {
@@ -777,6 +780,9 @@ function SesiFotoContent() {
     if (shotPhaseRef.current === "shooting" || shotPhaseRef.current === "preview") return;
 
     if (DEBUG_STATE) console.log("⏱️ [COUNTDOWN] mulai 3-2-1");
+    // Jaring pengaman: pastiin live view nyala sebelum countdown tampil
+    // (kalau jalur framing kelewat, mis. done_seq dateng duluan).
+    fetch(`${BACKEND_URL}/api/camera/resume-liveview`, { method: "POST" }).catch(() => { });
     goPhase("shooting");
     stopJariMulaiLoop();
     setIsCountingDown(true);

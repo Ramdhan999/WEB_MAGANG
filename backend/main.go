@@ -240,6 +240,15 @@ func main() {
 		c.Data(200, "image/jpeg", frame)
 	})
 
+	// Frontend manggil ini TEPAT sebelum layar DSLR tampil lagi (preset
+	// terkonfirmasi / countdown mau mulai): masa hening live view (buat
+	// transfer file full-res) diakhiri di sini, bukan pakai timer buta —
+	// jadi transfer dapet waktu maksimal TANPA layar pernah beku.
+	r.POST("/api/camera/resume-liveview", func(c *gin.Context) {
+		services.ResumeLiveViewNow()
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
 	r.GET("/api/robot/detection", func(c *gin.Context) {
 		resp, err := http.Get(robotBaseURL + "/detection")
 		if err != nil {

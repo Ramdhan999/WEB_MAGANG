@@ -368,6 +368,37 @@ var captureMu sync.Mutex
 // bisa molor belasan detik bahkan nggak kelar-kelar.
 var captureBusy atomic.Bool
 
+// resumeHook = cara frontend "nyalain lagi" live view di tengah masa hening
+// capture (lihat TriggerCapture). Di-set tiap capture mulai, di-nil-kan pas
+// capture kelar.
+var (
+	resumeHookMu sync.Mutex
+	resumeHook   func()
+)
+
+func setResumeHook(f func()) {
+	resumeHookMu.Lock()
+	resumeHook = f
+	resumeHookMu.Unlock()
+}
+
+// ResumeLiveViewNow dipanggil endpoint /api/camera/resume-liveview — frontend
+// manggil ini TEPAT sebelum layar DSLR tampil lagi (preset terkonfirmasi),
+// biar live view nyala pas dibutuhkan doang dan masa hening buat transfer
+// file jadi semaksimal mungkin.
+func ResumeLiveViewNow() {
+	resumeHookMu.Lock()
+	f := resumeHook
+	resumeHookMu.Unlock()
+	if f != nil {
+		f()
+		return
+	}
+	// Nggak ada capture yang lagi jalan — pastiin aja live view nyala.
+	captureBusy.Store(false)
+	_ = digiCamTryCommand([]string{digiCamRootURL() + "/?CMD=LiveViewWnd_Show"})
+}
+
 // digiCamCaptureDir = folder di PC tempat digiCamControl NYIMPEN file jepretan
 // full-res (setting "Transfer → Save to PC" di digiCamControl). Dari env
 // DIGICAM_CAPTURE_DIR. Kosong = belum diset → jatuh ke jalur HTTP /lastcaptured.
@@ -548,11 +579,14 @@ func TriggerCapture(sessionID string) (string, error) {
 	// 🚦 Bebasin kamera buat transfer file. Dua-duanya perlu:
 	//    (1) captureBusy → backend berhenti nge-poll frame (dilayani cache);
 	//    (2) LiveViewWnd_Hide → jendela live view digiCamControl DITUTUP.
-	//    Poin (2) yang krusial: jendela itu narik frame dari kamera terus
-	//    SENDIRI walau backend diem — di USB lawas (EOS 1100D) itu bikin
-	//    transfer file nggak kebagian jalur sama sekali.
-	//    DIBATESIN 6 DETIK: kalau belum kelar juga, live view dibuka lagi
-	//    biar layar DSLR nggak beku pas user mau jepretan berikutnya.
+	//    Bukti lapangan (EOS 1100D): file BARU ditransfer kalau live view
+	//    bener-bener berhenti — pas sesi berakhir & stream mati, file langsung
+	//    nongol. Hening 6 detik doang kemarin nggak cukup.
+	//    Makanya SEKARANG heningnya sampai salah satu dari:
+	//    (a) file dapet / capture kelar (defer di bawah), atau
+	//    (b) frontend manggil /api/camera/resume-liveview — dipanggil TEPAT
+	//        pas layar DSLR mau tampil lagi (preset dikonfirmasi). Jadi hening
+	//        maksimal TANPA pernah bikin layar beku.
 	captureBusy.Store(true)
 	_ = digiCamTryCommand([]string{root + "/?CMD=LiveViewWnd_Hide"})
 	var resumeOnce sync.Once
@@ -560,9 +594,9 @@ func TriggerCapture(sessionID string) (string, error) {
 		captureBusy.Store(false)
 		_ = digiCamTryCommand([]string{root + "/?CMD=LiveViewWnd_Show"})
 	}
-	unfreeze := time.AfterFunc(6*time.Second, func() { resumeOnce.Do(resumeLiveView) })
+	setResumeHook(func() { resumeOnce.Do(resumeLiveView) })
 	defer func() {
-		unfreeze.Stop()
+		setResumeHook(nil)
 		resumeOnce.Do(resumeLiveView)
 	}()
 
