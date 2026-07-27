@@ -273,6 +273,38 @@ func GetLastStreamFrame(maxAge time.Duration) ([]byte, bool) {
 	return streamFrameCache.frame, true
 }
 
+// =====================================================================
+// 📸 PREVIEW MOMEN SHUTTER
+// Frame yang lagi tampil TEPAT waktu perintah shutter sukses dikirim.
+// Preview 3 detik di /kamera pertama muncul dari frame saat hitungan habis
+// (instan), lalu di-swap ke frame ini — jadi pose preview == pose foto asli
+// walau orangnya sempet gerak antara hitungan habis dan shutter kejepret.
+// =====================================================================
+var shotPreviewState = struct {
+	mu    sync.Mutex
+	frame []byte
+	at    time.Time
+}{}
+
+func setShotPreview(frame []byte) {
+	shotPreviewState.mu.Lock()
+	defer shotPreviewState.mu.Unlock()
+	shotPreviewState.frame = frame
+	shotPreviewState.at = time.Now()
+}
+
+// GetShotPreview balikin frame momen shutter terakhir, tapi CUMA kalau lebih
+// baru dari `after` (frontend ngirim waktu dia mulai capture) — biar nggak
+// kejebak preview milik jepretan sebelumnya.
+func GetShotPreview(after time.Time) ([]byte, bool) {
+	shotPreviewState.mu.Lock()
+	defer shotPreviewState.mu.Unlock()
+	if shotPreviewState.frame == nil || !shotPreviewState.at.After(after) {
+		return nil, false
+	}
+	return shotPreviewState.frame, true
+}
+
 type CameraStatus struct {
 	Connected    bool   `json:"connected"`
 	CameraName   string `json:"camera_name"`
@@ -465,6 +497,12 @@ func TriggerCapture(sessionID string) (string, error) {
 		base + "/capture",
 	}); err != nil {
 		return "", fmt.Errorf("gagal trigger kamera: %w", err)
+	}
+
+	// 📸 Simpan frame yang lagi tampil TEPAT setelah perintah shutter sukses —
+	//    ini momen jepret sesungguhnya. Frontend nge-swap preview ke frame ini.
+	if frame, ok := GetLastStreamFrame(2 * time.Second); ok {
+		setShotPreview(frame)
 	}
 
 	// Prioritas 1 — file full-res langsung dari folder simpan digiCamControl

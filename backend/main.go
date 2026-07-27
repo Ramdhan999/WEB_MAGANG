@@ -224,6 +224,22 @@ func main() {
 		c.Data(200, "image/jpeg", frame)
 	})
 
+	// Frame TEPAT momen shutter (di-set TriggerCapture pas perintah jepret
+	// sukses). Frontend polling endpoint ini abis nge-fire capture, terus
+	// nge-swap preview 3 detiknya ke frame ini → pose preview == pose foto.
+	// ?after=<ms> = waktu frontend mulai capture; 404 selama frame momen
+	// shutter buat capture ITU belum ada (bukan sisa jepretan sebelumnya).
+	r.GET("/api/camera/shot-preview", func(c *gin.Context) {
+		afterMs, _ := strconv.ParseInt(c.Query("after"), 10, 64)
+		frame, ok := services.GetShotPreview(time.UnixMilli(afterMs))
+		if !ok {
+			c.JSON(404, gin.H{"ready": false})
+			return
+		}
+		c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+		c.Data(200, "image/jpeg", frame)
+	})
+
 	r.GET("/api/robot/detection", func(c *gin.Context) {
 		resp, err := http.Get(robotBaseURL + "/detection")
 		if err != nil {

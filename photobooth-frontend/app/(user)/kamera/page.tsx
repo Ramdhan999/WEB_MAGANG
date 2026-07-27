@@ -357,6 +357,10 @@ function SesiFotoContent() {
     }
 
     const finish = () => {
+      // Frame momen shutter dipegang sebagai blob URL — lepas biar gak numpuk.
+      if (previewPhotoRef.current?.startsWith("blob:")) {
+        URL.revokeObjectURL(previewPhotoRef.current);
+      }
       previewPhotoRef.current = null;
       setPreviewPhoto(null);
       goPhase("idle");
@@ -915,13 +919,40 @@ function SesiFotoContent() {
     //    bener di versi lama. Yang "nunggu" cuma izin shot berikutnya, BUKAN preview.
     // ========================================================================
     if (!isDummy) {
-      // Preview instan = frame TERAKHIR yang tampil di layar pas cekrek
+      // Preview instan = frame TERAKHIR yang tampil di layar pas hitungan habis
       // (backend nge-cache frame stream, bukan fetch baru ke digiCamControl —
       // jadi pose preview pasti sama kayak yang barusan keliatan).
       // mirrored=true biar orientasinya sama kayak live view yang di-mirror CSS.
       setIsCountingDown(false);
       isCountingDownRef.current = false;
       showPreview(`${BACKEND_URL}/api/camera/snapshot?t=${Date.now()}`, true);
+
+      // 🎯 SWAP KE FRAME MOMEN SHUTTER — shutter beneran kejepret ~0,5-1 dtk
+      //    SETELAH hitungan habis (perintah lewat digiCamControl). Kalau
+      //    orangnya keburu gerak, frame hitungan-habis ≠ foto asli. Makanya:
+      //    begitu backend nyimpen frame momen shutter (/api/camera/shot-preview),
+      //    preview di-swap diam-diam ke frame itu → pose preview == pose foto.
+      const firedAt = Date.now();
+      let swapped = false;
+      const pollShot = window.setInterval(async () => {
+        if (swapped || shotPhaseRef.current !== "preview") {
+          window.clearInterval(pollShot);
+          return;
+        }
+        try {
+          const r = await fetch(`${BACKEND_URL}/api/camera/shot-preview?after=${firedAt}`);
+          if (!r.ok) return; // 404 = shutter belum kejepret, coba tick berikutnya
+          const blob = await r.blob();
+          if (swapped || shotPhaseRef.current !== "preview") return;
+          swapped = true;
+          window.clearInterval(pollShot);
+          const obj = URL.createObjectURL(blob);
+          setPreviewPhoto(obj);
+          previewPhotoRef.current = obj;
+          if (DEBUG_STATE) console.log("🖼️ [PREVIEW] swap ke frame momen shutter");
+        } catch { /* backend belum bales — coba lagi */ }
+      }, 200);
+      window.setTimeout(() => window.clearInterval(pollShot), 4000);
 
       // 🔒 isCapturing TETAP true di sini (di-set di startSession) → startSession
       //    blokir jepretan berikutnya sampai capture ini kelar (lihat finally).
