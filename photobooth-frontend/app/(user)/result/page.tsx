@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import { QRCodeSVG } from "qrcode.react";
-import { usePageSound } from "@/hooks/usePageSound";
+import { usePageSound, stopPageSound } from "@/hooks/usePageSound";
 
 const BACKEND_URL = "http://localhost:8080";
 const LIVE_PREVIEW_MAX = 10;
@@ -150,6 +150,9 @@ function ResultContent() {
         currentAudioRef.current.currentTime = 0;
       } catch (e) { }
     }
+    // Potong juga suara intro halaman (result.mp3) — biar nggak nabrak
+    // kalo user langsung pencet Kirim Digital / Cetak begitu masuk result
+    stopPageSound();
 
     try {
       const audio = new Audio(path);
@@ -349,7 +352,8 @@ function ResultContent() {
         }
         setPhotoSlots(slots);
 
-        const framePhotoUrls = slots.filter(s => s.photo).map(s => s.photo as string);
+        // Dedupe: foto yang dipakai di banyak slot template cukup tampil 1x di live preview
+        const framePhotoUrls = [...new Set(slots.filter(s => s.photo).map(s => s.photo as string))];
         const others = capturedUrls.filter(url => !framePhotoUrls.includes(url));
         const shuffledOthers = seededShuffle(others, txn);
         const fillCount = Math.max(0, LIVE_PREVIEW_MAX - framePhotoUrls.length);
@@ -382,6 +386,14 @@ function ResultContent() {
     }, speed);
     return () => clearInterval(interval);
   }, [isPlaying, speed, livePreviewPhotos.length]);
+
+  // 🖼️ Preload semua foto live preview → ganti foto nggak ada jeda blank/kedip
+  useEffect(() => {
+    livePreviewPhotos.forEach((url) => {
+      const im = new window.Image();
+      im.src = url;
+    });
+  }, [livePreviewPhotos]);
 
   useEffect(() => { setCurrentIdx(0); }, [livePreviewPhotos.length]);
 
@@ -789,7 +801,10 @@ const handleOpenDigital = async () => {
               </div>
             </div>
             <div className="flex-1 w-full flex items-center justify-center relative pb-6 scale-100 xl:scale-105 origin-center">
-              <FramePreview className="shadow-2xl" innerRef={printRef} />
+              {/* Dipanggil sebagai fungsi (bukan <FramePreview/>) biar React nggak
+                  remount panel tiap parent re-render (tick live preview) — remount
+                  itu yang bikin frame kedip/jedag-jedug. */}
+              {FramePreview({ className: "shadow-2xl", innerRef: printRef })}
             </div>
           </div>
 
@@ -817,7 +832,9 @@ const handleOpenDigital = async () => {
                   <div className="text-white/30 font-bold">Belum ada foto</div>
                 ) : (
                   <>
-                    <img key={currentIdx} src={currentPhoto} alt={`Foto ${currentIdx + 1}`} className="w-full h-full object-cover live-blink" />
+                    {/* Tanpa key: elemen img dipertahankan, cuma src yang ganti —
+                        foto lama tetap tampil sampai foto baru siap (nggak kedip) */}
+                    <img src={currentPhoto} alt={`Foto ${currentIdx + 1}`} className="w-full h-full object-cover" />
                     {currentIsFrame && (
                       <div className="absolute top-4 right-4 bg-[#FBB400] px-3 py-1 rounded-full text-white text-[12px] font-bold shadow-md border border-white z-20">★ Frame</div>
                     )}
@@ -1171,12 +1188,6 @@ const handleOpenDigital = async () => {
           .font-inter { font-family: 'Inter', sans-serif; }
           .no-scrollbar::-webkit-scrollbar { display: none; }
           .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-          @keyframes liveBlink {
-            0%   { opacity: 0.1; transform: scale(1.04); }
-            45%  { opacity: 1;   transform: scale(1); }
-            100% { opacity: 1;   transform: scale(1); }
-          }
-          .live-blink { animation: liveBlink 0.22s ease-out; }
         `}</style>
       </main>
     </>

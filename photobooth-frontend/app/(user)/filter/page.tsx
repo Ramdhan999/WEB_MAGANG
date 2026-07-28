@@ -127,6 +127,28 @@ function FilterStickerContent() {
 
   const frameRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Scrollbar stiker bisa dipencet & ditarik (mouse + touch)
+  const stickerTrackRef = useRef<HTMLDivElement>(null);
+  const STICKER_THUMB_H = 80;
+  const stickerScrollFromPointer = (clientY: number) => {
+    const track = stickerTrackRef.current;
+    const sc = scrollRef.current;
+    if (!track || !sc) return;
+    const rect = track.getBoundingClientRect();
+    const usable = rect.height - STICKER_THUMB_H;
+    if (usable <= 0) return;
+    const ratio = Math.min(1, Math.max(0, (clientY - rect.top - STICKER_THUMB_H / 2) / usable));
+    sc.scrollTop = ratio * (sc.scrollHeight - sc.clientHeight);
+  };
+  const onStickerTrackPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    stickerScrollFromPointer(e.clientY);
+  };
+  const onStickerTrackPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) stickerScrollFromPointer(e.clientY);
+  };
   const dragInfo = useRef<{ id: number; type: "move" | "resize" | "rotate"; startX: number; startY: number; startSize: number; startLeft: number; startTop: number; startRotation: number; } | null>(null);
 
   const stateSnapshotRef = useRef({ photoSlots, selectedFilter, filterIntensity, placedStickers, dbFilters });
@@ -864,8 +886,14 @@ function FilterStickerContent() {
                     </button>
                   ))}
                 </div>
-                <div className="w-[14px] h-full bg-[#7A7A7A] rounded-[69px] relative flex justify-center py-1 flex-shrink-0">
-                  <div className="w-[14px] h-[80px] bg-[#51B4AF] rounded-[69px] absolute transition-all duration-75" style={{ top: `calc(${scrollProgress * 100}% - ${scrollProgress * 80}px)` }} />
+                <div
+                  ref={stickerTrackRef}
+                  onPointerDown={onStickerTrackPointerDown}
+                  onPointerMove={onStickerTrackPointerMove}
+                  className="w-[14px] h-full bg-[#7A7A7A] rounded-[69px] relative flex justify-center py-1 flex-shrink-0 cursor-pointer after:content-[''] after:absolute after:-inset-x-3 after:inset-y-0"
+                  style={{ touchAction: "none" }}
+                >
+                  <div className="w-[14px] h-[80px] bg-[#51B4AF] rounded-[69px] absolute transition-all duration-75 pointer-events-none" style={{ top: `calc(${scrollProgress * 100}% - ${scrollProgress * 80}px)` }} />
                 </div>
               </div>
             </div>

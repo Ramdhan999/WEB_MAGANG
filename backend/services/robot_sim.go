@@ -57,6 +57,11 @@ type robotStateData struct {
 	// 📊 Progress unlock (0.0 - 1.0) — user tahan telapak berapa % dari threshold
 	UnlockProgress float64
 
+	// ✅ Guard per-siklus: udah ada preset confirm sebelum /done?
+	// Kasus robot udah di posisi tujuan → Flask skip /moving → tanpa guard
+	// ini preset_seq nggak pernah naik → highlight preset di frontend mati.
+	PresetConfirmed bool
+
 	AutoCaptureAt time.Time
 }
 
@@ -109,12 +114,30 @@ func RobotConfirmPreset(n int) {
 	defer robotState.mu.Unlock()
 	robotState.d.CurrentPreset = n
 	robotState.d.PresetSeq++
+	robotState.d.PresetConfirmed = true
+}
+
+// RobotEnsurePresetConfirmed — fallback dari webhook /done. Kalau robot udah
+// di posisi tujuan, Flask skip /moving (sumber confirm biasa) dan langsung
+// /done; tanpa fallback ini frontend nggak pernah dapet sinyal preset kepilih
+// (highlight ijo + suara 4 mati). Guard PresetConfirmed nyegah dobel confirm
+// (= dobel suara) pas robot beneran gerak.
+func RobotEnsurePresetConfirmed(n int) {
+	robotState.mu.Lock()
+	defer robotState.mu.Unlock()
+	if n <= 0 || robotState.d.PresetConfirmed {
+		return
+	}
+	robotState.d.CurrentPreset = n
+	robotState.d.PresetSeq++
+	robotState.d.PresetConfirmed = true
 }
 
 func RobotFireDone() {
 	robotState.mu.Lock()
 	defer robotState.mu.Unlock()
 	robotState.d.DoneSeq++
+	robotState.d.PresetConfirmed = false // siklus kelar → guard reset buat ronde berikutnya
 	robotState.d.AutoCaptureAt = time.Now().Add(robotCaptureDelaySec * time.Second)
 }
 

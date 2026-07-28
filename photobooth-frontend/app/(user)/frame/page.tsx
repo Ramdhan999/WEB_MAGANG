@@ -94,6 +94,28 @@ function FrameContent() {
     }
   }, [activeCategory]);
 
+  // Scrollbar custom bisa dipencet & ditarik (mouse + touch)
+  const trackRef = useRef<HTMLDivElement>(null);
+  const TRACK_THUMB_H = 82;
+  const scrollFromPointer = (clientY: number) => {
+    const track = trackRef.current;
+    const sc = scrollContainerRef.current;
+    if (!track || !sc) return;
+    const rect = track.getBoundingClientRect();
+    const usable = rect.height - TRACK_THUMB_H;
+    if (usable <= 0) return;
+    const ratio = Math.min(1, Math.max(0, (clientY - rect.top - TRACK_THUMB_H / 2) / usable));
+    sc.scrollTop = ratio * (sc.scrollHeight - sc.clientHeight);
+  };
+  const onTrackPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    scrollFromPointer(e.clientY);
+  };
+  const onTrackPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) scrollFromPointer(e.clientY);
+  };
+
   // SUBMIT: update PhotoSession dengan template_name + frame_id
   const handleNext = async () => {
     if (!selectedTemplate || isSubmitting) return;
@@ -226,11 +248,11 @@ function FrameContent() {
         </div>
 
         <div className="w-full flex justify-center mb-2 h-[600px]">
-          <div className="flex gap-6 w-full max-w-[1000px] h-full justify-center">
+          <div className="flex gap-6 w-full max-w-[1024px] h-full justify-center">
             <div
               ref={scrollContainerRef}
               onScroll={handleScroll}
-              className="flex-grow overflow-y-auto custom-vertical-scrollbar pr-2 pt-4 pb-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 content-start justify-items-center"
+              className="flex-grow overflow-y-auto custom-vertical-scrollbar pl-4 pr-4 pt-4 pb-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 content-start justify-items-center"
             >
               {loading ? (
                 <div className="col-span-4 flex items-center justify-center h-full pt-10">
@@ -286,9 +308,15 @@ function FrameContent() {
               )}
             </div>
 
-            <div className="shrink-0 box-border w-[12px] h-[418px] bg-[#2E4F4D] border-[1.5px] border-[#54868A] rounded-[23px] relative flex flex-col items-center shadow-inner mt-4">
+            <div
+              ref={trackRef}
+              onPointerDown={onTrackPointerDown}
+              onPointerMove={onTrackPointerMove}
+              className="shrink-0 box-border w-[12px] h-[418px] bg-[#2E4F4D] border-[1.5px] border-[#54868A] rounded-[23px] relative flex flex-col items-center shadow-inner mt-4 cursor-pointer after:content-[''] after:absolute after:-inset-x-3 after:inset-y-0"
+              style={{ touchAction: "none" }}
+            >
               <div
-                className="w-[12px] h-[82px] bg-[#72DDD8] border-[1.5px] border-[#54868A] rounded-[23px] absolute shadow-[0_0_10px_rgba(114,221,216,0.5)] transition-all duration-75 ease-out"
+                className="w-[12px] h-[82px] bg-[#72DDD8] border-[1.5px] border-[#54868A] rounded-[23px] absolute shadow-[0_0_10px_rgba(114,221,216,0.5)] transition-all duration-75 ease-out pointer-events-none"
                 style={{ top: `${scrollProgress * 332}px` }}
               ></div>
             </div>

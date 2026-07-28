@@ -280,6 +280,14 @@ func main() {
 	})
 
 	r.POST("/api/robot/done", func(c *gin.Context) {
+		var req struct {
+			Preset int `json:"preset"`
+		}
+		c.ShouldBindJSON(&req)
+		// Robot udah di posisi → Flask skip /moving; pastiin preset tetap
+		// ke-confirm biar highlight + suara preset di frontend nyala.
+		services.RobotEnsurePresetConfirmed(req.Preset)
+
 		services.SetTrigger()    // saklar lama (backward compat)
 		services.RobotFireDone() // ⬅️ trigger countdown via /api/robot/state
 

@@ -7,6 +7,21 @@ interface UsePageSoundOptions {
   keepPlayingOnUnmount?: boolean;
 }
 
+// 🔊 Audio page yang lagi jalan — dishare biar bisa dipotong dari luar
+//    (misal: user langsung pencet tombol yang punya suara sendiri,
+//    suara intro halaman dipotong dulu biar nggak nabrak)
+const pageAudioRef: { current: HTMLAudioElement | null } = { current: null };
+
+export function stopPageSound() {
+  if (pageAudioRef.current) {
+    try {
+      pageAudioRef.current.pause();
+      pageAudioRef.current.currentTime = 0;
+    } catch (e) { }
+    pageAudioRef.current = null;
+  }
+}
+
 /**
  * 🔊 usePageSound — hook buat auto-play audio pas page load.
  *
@@ -47,6 +62,7 @@ export function usePageSound(
 
     const audio = new Audio(soundPath);
     audio.preload = "auto";
+    pageAudioRef.current = audio;
 
     let cancelled = false;
 
@@ -82,12 +98,14 @@ export function usePageSound(
       audio.removeEventListener("ended", handleEnded);
 
       // Kalo keepPlayingOnUnmount = true, biarin audio jalan
+      // (ref-nya juga dibiarin, biar tetep bisa dipotong stopPageSound)
       // Berguna untuk case terima-kasih dimana audio harus selesai penuh
       if (!keepPlayingOnUnmount) {
         try {
           audio.pause();
           audio.currentTime = 0;
         } catch (e) { }
+        if (pageAudioRef.current === audio) pageAudioRef.current = null;
       }
     };
   }, [soundPath, enabled]);

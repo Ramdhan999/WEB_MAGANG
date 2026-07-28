@@ -129,6 +129,28 @@ function PrintReviewContent() {
 
   const justDraggedRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Scrollbar galeri bisa dipencet & ditarik (mouse + touch)
+  const galleryTrackRef = useRef<HTMLDivElement>(null);
+  const GALLERY_THUMB_H = 100;
+  const galleryScrollFromPointer = (clientY: number) => {
+    const track = galleryTrackRef.current;
+    const sc = scrollRef.current;
+    if (!track || !sc) return;
+    const rect = track.getBoundingClientRect();
+    const usable = rect.height - GALLERY_THUMB_H;
+    if (usable <= 0) return;
+    const ratio = Math.min(1, Math.max(0, (clientY - rect.top - GALLERY_THUMB_H / 2) / usable));
+    sc.scrollTop = ratio * (sc.scrollHeight - sc.clientHeight);
+  };
+  const onGalleryTrackPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    galleryScrollFromPointer(e.clientY);
+  };
+  const onGalleryTrackPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) galleryScrollFromPointer(e.clientY);
+  };
   const slotsRef = useRef(slots);
   useEffect(() => { slotsRef.current = slots; }, [slots]);
 
@@ -729,8 +751,14 @@ function PrintReviewContent() {
                 })}
               </div>
             </div>
-            <div className="w-[12px] h-[600px] bg-[#202020] border-[1.5px] border-[#54868A] rounded-full relative flex justify-center shadow-inner">
-              <div className="w-[12px] h-[100px] bg-[#006E68] border-[1.5px] border-[#54868A] rounded-full absolute transition-all duration-75" style={{ top: `${scrollProgress * (600 - 100)}px` }} />
+            <div
+              ref={galleryTrackRef}
+              onPointerDown={onGalleryTrackPointerDown}
+              onPointerMove={onGalleryTrackPointerMove}
+              className="w-[12px] h-[600px] bg-[#202020] border-[1.5px] border-[#54868A] rounded-full relative flex justify-center shadow-inner cursor-pointer after:content-[''] after:absolute after:-inset-x-3 after:inset-y-0"
+              style={{ touchAction: "none" }}
+            >
+              <div className="w-[12px] h-[100px] bg-[#006E68] border-[1.5px] border-[#54868A] rounded-full absolute transition-all duration-75 pointer-events-none" style={{ top: `${scrollProgress * (600 - 100)}px` }} />
             </div>
           </div>
           <div className="flex gap-10 mt-2 self-start ml-4 font-hind font-semibold text-[18px] text-[#3E8C7B] tracking-[-0.08em]">
