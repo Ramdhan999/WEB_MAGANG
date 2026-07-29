@@ -75,7 +75,7 @@ export default function SessionTimer({
           SISA WAKTU
         </span>
         <span
-          className={`font-bold text-[22px] tracking-[-0.05em] leading-none transition-colors duration-300 ${warning ? "text-[#FF3B30] animate-timer-blink" : "text-[#FFAE00]"
+          className={`font-bold text-[22px] tracking-[-0.05em] leading-none transition-colors duration-300 ${warning ? "text-[#FF3B30]" : "text-[#FFAE00]"
             }`}
           style={{ fontFamily: "'Inter', sans-serif", textShadow: "1px 1px 3px rgba(0,0,0,0.2)" }}
           suppressHydrationWarning
@@ -90,12 +90,6 @@ export default function SessionTimer({
           50% { box-shadow: 0 0 20px 5px rgba(255, 59, 48, 0.55); transform: scale(1.07); }
         }
         .animate-timer-warning { animation: timer-warning 1s ease-in-out infinite; }
-
-        @keyframes timer-blink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.3; }
-        }
-        .animate-timer-blink { animation: timer-blink 1s steps(1, start) infinite; }
       `}</style>
     </div>
   );

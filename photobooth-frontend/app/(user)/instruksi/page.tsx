@@ -29,6 +29,21 @@ function InstruksiContent() {
   const [currentSegment, setCurrentSegment] = useState<number>(-1);
   const hasRedirectedRef = useRef(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioStoppedRef = useRef(false);
+
+  // 🔇 Stop suara instruksi & cegah segment berikutnya main.
+  //    Dipanggil pas pindah halaman biar suara (mis. instruksi_6) nggak
+  //    nabrak ke halaman berikutnya.
+  const stopInstructionAudio = () => {
+    audioStoppedRef.current = true;
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+      } catch (e) { }
+      currentAudioRef.current = null;
+    }
+  };
 
   // 🎯 Fetch durasi paket
   useEffect(() => {
@@ -76,8 +91,8 @@ function InstruksiContent() {
     let cancelled = false;
 
     const playSegment = (idx: number) => {
-      if (cancelled || idx >= AUDIO_SEGMENTS.length) {
-        if (!cancelled) {
+      if (cancelled || audioStoppedRef.current || idx >= AUDIO_SEGMENTS.length) {
+        if (!cancelled && !audioStoppedRef.current) {
           setHighlight("none");
           setCurrentSegment(-1);
           setCanProceed(true);
@@ -136,13 +151,20 @@ function InstruksiContent() {
     return () => {
       cancelled = true;
       clearTimeout(startTimeout);
-      // JANGAN pause audio — biarin selesai
+      // 🔇 Pindah halaman → hentikan suara biar nggak nabrak ke halaman berikutnya.
+      //    (Saat StrictMode double-mount di dev, audio belum sempat dibuat karena
+      //    ada delay 300ms, jadi ini aman.)
+      stopInstructionAudio();
     };
   }, []);
 
   const handleLanjut = async () => {
     if (hasRedirectedRef.current || !canProceed) return;
     hasRedirectedRef.current = true;
+
+    // 🔇 Langsung stop suara (mis. instruksi_6) begitu pencet Lanjut, biar nggak
+    //    kedengeran nyambung pas nunggu fetch / pindah ke halaman kamera.
+    stopInstructionAudio();
 
     try {
       await fetch(`${BACKEND_URL}/api/robot/enable`, { method: "POST" });
