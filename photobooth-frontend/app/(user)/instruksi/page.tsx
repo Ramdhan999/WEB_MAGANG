@@ -89,6 +89,10 @@ function InstruksiContent() {
   // 🎯 Play audio sequence dengan sync highlight
   useEffect(() => {
     let cancelled = false;
+    // Reset flag stop tiap mount — WAJIB, karena ref persist antar (re)mount.
+    // Tanpa ini, cleanup StrictMode di dev nge-set true dan mount berikutnya
+    // langsung bail → suara nggak pernah main.
+    audioStoppedRef.current = false;
 
     const playSegment = (idx: number) => {
       if (cancelled || audioStoppedRef.current || idx >= AUDIO_SEGMENTS.length) {
