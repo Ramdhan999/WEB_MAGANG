@@ -37,6 +37,15 @@ function QrisContent() {
 
   usePageSound("/fase/qris.mp3");
 
+  // 🎯 Prefetch robot 3D sedini mungkin — user biasanya nunggu lama di sini
+  //    (scan QR + konfirmasi bayar). Import modul DobotViewer = muat chunk
+  //    three.js + jalanin useGLTF.preload() = download model ~20MB ke cache.
+  //    Jadi pas sampai /tutorial-kontrol nanti, robotnya udah siap & langsung
+  //    muncul, gak ngilang dulu. (success page juga prefetch sebagai backup.)
+  useEffect(() => {
+    import("@/components/DobotViewer").catch(() => { });
+  }, []);
+
   // 🎯 Sync paymentData ke ref (buat polling access)
   useEffect(() => {
     paymentDataRef.current = paymentData;

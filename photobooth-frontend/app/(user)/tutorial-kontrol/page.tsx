@@ -8,13 +8,8 @@ import dynamic from "next/dynamic";
 // Robot 3D — three.js cuma jalan di browser, jadi WAJIB ssr: false
 const DobotViewer = dynamic(() => import("@/components/DobotViewer"), {
   ssr: false,
-  loading: () => (
-    <div className="w-full h-full flex items-center justify-center">
-      <span className="font-hind font-semibold text-[14px] text-[#A5CFC4]">
-        Memuat robot 3D...
-      </span>
-    </div>
-  ),
+  // Tanpa tulisan loading — panel dibiarin blank aja sampai robotnya siap
+  loading: () => null,
 });
 
 const BACKEND_URL = "http://localhost:8080";
@@ -83,7 +78,7 @@ function TutorialKontrolContent() {
   const [timeLeft, setTimeLeft] = useState(TUTORIAL_DURATION_SEC);
   const hasRedirectedRef = useRef(false);
 
-  usePageSound("/fase/kontrol.mpeg");
+  usePageSound("/fase/kontrol.mp3");
 
   const activePreset = PRESETS[activeIndex];
 

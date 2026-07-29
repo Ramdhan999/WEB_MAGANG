@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePageSound } from "@/hooks/usePageSound";
+import SessionTimer from "@/components/SessionTimer";
 
 const BACKEND_URL = "http://localhost:8080";
 const TIMER_SECONDS = 180;
@@ -67,12 +68,6 @@ function migrateTransform(t: any): PhotoTransform {
   return { ...DEFAULT_TRANSFORM };
 }
 
-const formatTime = (s: number) => {
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return `${m}:${sec.toString().padStart(2, '0')}`;
-};
-
 function FilterStickerContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -97,7 +92,7 @@ function FilterStickerContent() {
   const [activelyPanning, setActivelyPanning] = useState<number | null>(null);
   const [slotDims, setSlotDims] = useState<Record<number, { w: number; h: number }>>({});
   const slotElsRef = useRef<Record<number, HTMLDivElement>>({});
-  usePageSound("/fase/filter.mp3");
+  usePageSound(["/fase/filter.mp3", "/fase/filter2.mp3"]);
 
   // 🎯 Drag & drop sticker dari grid ke frame
   const [draggingEmoji, setDraggingEmoji] = useState<string | null>(null);
@@ -685,17 +680,8 @@ function FilterStickerContent() {
         <div className="h-full flex-grow bg-[#151515]"></div>
       </div>
 
-      <div className="fixed top-6 right-6 z-[80] px-4 h-[52px] bg-white border-[1.5px] border-[#54868A] rounded-[28px] shadow-md flex items-center gap-3">
-        <div className="w-[32px] h-[32px] bg-[#3F9C9B] border-[2px] border-[#235757] rounded-full flex items-center justify-center shadow-inner shrink-0">
-          <img src="/icon1.png" alt="timer" className="w-[16px] h-[16px] object-contain" />
-        </div>
-        <div className="flex flex-col justify-center leading-none">
-          <span className="font-hind font-semibold text-[10px] tracking-widest text-[#7A7979]">SISA WAKTU</span>
-          <span className="font-inter font-bold text-[22px] text-[#FFAE00] tracking-[-0.05em] leading-none" style={{ textShadow: "1px 1px 3px rgba(0,0,0,0.2)" }}>
-            {formatTime(timeLeft)}
-          </span>
-        </div>
-      </div>
+      {/* ⏱️ Timer sesi — 30 detik terakhir: merah + animasi + suara habis.mp3 */}
+      <SessionTimer seconds={timeLeft} />
 
       <div className="w-full flex justify-center items-center mt-6 mb-6 z-10 px-4 relative flex-shrink-0">
         <div className="flex flex-col items-center">

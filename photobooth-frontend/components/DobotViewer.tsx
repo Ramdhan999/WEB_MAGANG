@@ -201,6 +201,7 @@ export default function DobotViewer({
         style={{ background: "transparent" }}
       >
         <Lights />
+        {/* fallback null = panel dibiarin blank sampai model siap (tanpa tulisan) */}
         <Suspense fallback={null}>
           <ArmRig pose={activePose} tip={showCamera ? <CameraHead /> : null} />
         </Suspense>

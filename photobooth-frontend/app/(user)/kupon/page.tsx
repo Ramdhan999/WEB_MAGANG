@@ -38,6 +38,14 @@ function KuponContent() {
 
   usePageSound("/fase/voucher.mp3");
 
+  // 🎯 Prefetch robot 3D dari sini juga. Penting karena voucher gratis bisa
+  //    lompat LANGSUNG ke /success (skip /qris), jadi prefetch qris kelewat.
+  //    Import modul DobotViewer = muat chunk three.js + download model ~20MB
+  //    ke cache, biar pas /tutorial-kontrol robotnya langsung muncul.
+  useEffect(() => {
+    import("@/components/DobotViewer").catch(() => { });
+  }, []);
+
   // ===== SOUND ERROR: dikelola manual, BUKAN lewat usePageSound =====
   // Alasannya: kalau lewat usePageSound(error), suara ikut mati begitu
   // state error di-false-kan (misal pas kolom diketuk). Sekarang:

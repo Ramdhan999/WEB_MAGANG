@@ -4,12 +4,7 @@ import { useState, useRef, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePageSound } from "@/hooks/usePageSound";
 import { useSessionCountdown, SESSION_SECONDS } from "@/hooks/useSessionCountdown";
-
-const formatTime = (s: number) => {
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return `${m}:${sec.toString().padStart(2, "0")}`;
-};
+import SessionTimer from "@/components/SessionTimer";
 
 interface ApiTemplate {
   id: number;
@@ -37,7 +32,7 @@ function FrameContent() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  usePageSound("/fase/frame.mpeg");
+  usePageSound("/fase/frame.mp3");
 
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -173,18 +168,10 @@ function FrameContent() {
         <div className="h-full flex-grow max-w-[486px]" style={{ background: 'linear-gradient(90deg, #151515 0%, #252525 100%)', transform: 'matrix(-1, 0, 0, 1, 0, 0)' }}></div>
       </div>
 
-      {/* ⏱️ Timer sesi — gaya sama & waktunya NYAMBUNG dengan print-preview */}
-      <div className="fixed top-6 right-6 z-[80] px-4 h-[52px] bg-white border-[1.5px] border-[#54868A] rounded-[28px] shadow-md flex items-center gap-3">
-        <div className="w-[32px] h-[32px] bg-[#3F9C9B] border-[2px] border-[#235757] rounded-full flex items-center justify-center shadow-inner shrink-0">
-          <img src="/icon1.png" alt="timer" className="w-[16px] h-[16px] object-contain" />
-        </div>
-        <div className="flex flex-col justify-center leading-none">
-          <span className="font-hind font-semibold text-[10px] tracking-widest text-[#7A7979]">SISA WAKTU</span>
-          <span className="font-inter font-bold text-[22px] text-[#FFAE00] tracking-[-0.05em] leading-none" style={{ textShadow: "1px 1px 3px rgba(0,0,0,0.2)" }} suppressHydrationWarning>
-            {formatTime(timeLeft)}
-          </span>
-        </div>
-      </div>
+      {/* ⏱️ Timer sesi — gaya sama & waktunya NYAMBUNG dengan print-preview.
+          soundKey sama biar habis.mp3 bunyi sekali aja lintas frame↔print-preview.
+          30 detik terakhir: merah + animasi + suara habis.mp3 */}
+      <SessionTimer seconds={timeLeft} soundKey={`edit-${txn}`} />
 
       {errorMsg && (
         <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg font-bold z-50 flex items-center gap-2">

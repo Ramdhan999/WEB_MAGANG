@@ -15,6 +15,14 @@ function SuccessContent() {
 
   usePageSound("/fase/bayar_berhasil.mp3");
 
+  // 🎯 Prefetch robot 3D selama user masih nunggu di halaman success (~4 detik).
+  //    Import modul DobotViewer = muat chunk three.js + jalanin useGLTF.preload()
+  //    di dalamnya = mulai download model ~20MB ke cache. Jadi pas masuk
+  //    /tutorial-kontrol, robotnya langsung muncul, gak ngilang dulu.
+  useEffect(() => {
+    import("@/components/DobotViewer").catch(() => { });
+  }, []);
+
   // Verifikasi transaksi ke backend
   useEffect(() => {
     if (!txn) {

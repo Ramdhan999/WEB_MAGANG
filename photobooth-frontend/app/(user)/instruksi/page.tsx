@@ -12,6 +12,7 @@ const AUDIO_SEGMENTS = [
   { key: "rule-1", src: "/fase/instruksi_3.mp3", highlight: "rule-1" },
   { key: "rule-2", src: "/fase/instruksi_4.mp3", highlight: "rule-2" },
   { key: "rule-3", src: "/fase/instruksi_5.mp3", highlight: "rule-3" },
+  { key: "closing", src: "/fase/instruksi_6.mp3", highlight: "none", enablesProceed: true },
 ];
 
 type HighlightTarget = "none" | "timer" | "rule-1" | "rule-2" | "rule-3";
@@ -87,6 +88,12 @@ function InstruksiContent() {
       const segment = AUDIO_SEGMENTS[idx];
       setCurrentSegment(idx);
       setHighlight(segment.highlight as HighlightTarget);
+
+      // 🎯 Button udah bisa dipencet begitu segment ini mulai (instruksi_5 udah selesai),
+      // tapi audio instruksi_6 tetap lanjut main
+      if ((segment as { enablesProceed?: boolean }).enablesProceed) {
+        setCanProceed(true);
+      }
 
       const audio = new Audio(segment.src);
       currentAudioRef.current = audio;

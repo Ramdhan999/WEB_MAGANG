@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePageSound } from "@/hooks/usePageSound";
 import { useSessionCountdown, SESSION_SECONDS } from "@/hooks/useSessionCountdown";
+import SessionTimer from "@/components/SessionTimer";
 
 const BACKEND_URL = "http://localhost:8080";
 
@@ -50,12 +51,6 @@ function computeImageLayout(cw: number, ch: number, imgW: number, imgH: number, 
   const offsetY = (ch - renderedH) / 2 + transform.fy * halfY;
   return { renderedW, renderedH, halfX, halfY, offsetX, offsetY };
 }
-
-const formatTime = (s: number) => {
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return `${m}:${sec.toString().padStart(2, '0')}`;
-};
 
 function getOverlayStyle(template: ApiTemplate | null, slotCount: number): React.CSSProperties {
   const top = template?.overlay_top || 10;
@@ -525,17 +520,9 @@ function PrintReviewContent() {
         <div className="h-full flex-grow" style={{ background: 'linear-gradient(90deg, #151515 0%, #252525 100%)', transform: 'matrix(-1, 0, 0, 1, 0, 0)' }}></div>
       </div>
 
-      <div className="fixed top-6 right-6 z-[80] px-4 h-[52px] bg-white border-[1.5px] border-[#54868A] rounded-[28px] shadow-md flex items-center gap-3">
-        <div className="w-[32px] h-[32px] bg-[#3F9C9B] border-[2px] border-[#235757] rounded-full flex items-center justify-center shadow-inner shrink-0">
-          <img src="/icon1.png" alt="timer" className="w-[16px] h-[16px] object-contain" />
-        </div>
-        <div className="flex flex-col justify-center leading-none">
-          <span className="font-hind font-semibold text-[10px] tracking-widest text-[#7A7979]">SISA WAKTU</span>
-          <span className="font-inter font-bold text-[22px] text-[#FFAE00] tracking-[-0.05em] leading-none" style={{ textShadow: "1px 1px 3px rgba(0,0,0,0.2)" }} suppressHydrationWarning>
-            {formatTime(timeLeft)}
-          </span>
-        </div>
-      </div>
+      {/* ⏱️ Timer sesi — digabung dgn frame (soundKey sama → habis.mp3 sekali aja).
+          30 detik terakhir: merah + animasi + suara habis.mp3 */}
+      <SessionTimer seconds={timeLeft} soundKey={`edit-${txn}`} />
 
       <div className="w-full flex justify-center items-center mt-6 mb-4 z-10 px-4 relative min-h-[80px]">
         <div className="flex flex-col items-center leading-none">

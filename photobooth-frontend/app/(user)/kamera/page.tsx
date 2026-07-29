@@ -1073,6 +1073,9 @@ function SesiFotoContent() {
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
+  // ⏱️ 30 detik terakhir → timer merah + kedap-kedip (tanpa suara)
+  const timerWarning = timeLeft <= 30 && timeLeft > 0;
+
   if (loadingSession) {
     return (
       <main className="relative flex min-h-screen flex-col items-center justify-center" style={{ backgroundColor: "#E3D5D5" }}>
@@ -1104,12 +1107,12 @@ function SesiFotoContent() {
 
       <header className="w-full h-[80px] bg-white border-b-[1.5px] border-[#54868A] flex items-center justify-between px-8 shrink-0">
         <div className="flex items-center gap-4">
-          <div className="w-[44px] h-[44px] bg-[#3F9C9B] border-[2px] border-[#235757] rounded-full flex items-center justify-center shadow-inner shrink-0">
+          <div className={`w-[44px] h-[44px] border-[2px] rounded-full flex items-center justify-center shadow-inner shrink-0 transition-colors duration-300 ${timerWarning ? "bg-[#FF3B30] border-[#8B1A12] animate-timer-warning" : "bg-[#3F9C9B] border-[#235757]"}`}>
             <img src="/icon1.png" alt="timer icon" className="w-[22px] h-[22px] object-contain" />
           </div>
           <div className="flex flex-col leading-none">
             <span className="font-hind font-semibold text-[20px] text-[#405444] tracking-[-0.08em]">Sisa waktu sesi:</span>
-            <span className="font-inter font-medium text-[22px] text-[#FFAE00] tracking-[-0.06em] mt-1" style={{ textShadow: "2px 2px 4px rgba(0,0,0,0.25)" }}>
+            <span className={`inline-block font-inter font-medium text-[22px] tracking-[-0.06em] mt-1 transition-colors duration-300 ${timerWarning ? "text-[#FF3B30] animate-timer-pulse" : "text-[#FFAE00]"}`} style={{ textShadow: "2px 2px 4px rgba(0,0,0,0.25)" }}>
               {formatTime(timeLeft)}
             </span>
           </div>
@@ -1270,6 +1273,18 @@ function SesiFotoContent() {
           100% { transform: scale(1); opacity: 0.85; }
         }
         .animate-count-pop { animation: count-pop 0.9s ease-out 1 both; }
+
+        /* ⏱️ 30 detik terakhir — timer merah + kedap-kedip */
+        @keyframes timer-warning {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.5); transform: scale(1); }
+          50% { box-shadow: 0 0 18px 4px rgba(255, 59, 48, 0.6); transform: scale(1.1); }
+        }
+        .animate-timer-warning { animation: timer-warning 1s ease-in-out infinite; }
+        @keyframes timer-pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.18); }
+        }
+        .animate-timer-pulse { animation: timer-pulse 1s ease-in-out infinite; transform-origin: left center; }
       `}</style>
     </main>
   );
