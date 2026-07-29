@@ -118,12 +118,16 @@ function SidePanel({
   activePreset,
   usedPresets,
   startTriggered,
+  onLanjut,
+  lanjutDisabled,
 }: {
   fsmState: FsmStateType;
   unlockProgress: number;
   activePreset: number | null;
   usedPresets: number[];
   startTriggered: boolean;
+  onLanjut: () => void;
+  lanjutDisabled: boolean;
 }) {
   const isLocked = fsmState === "LOCKED" || fsmState === "";
   const isUnlocking = fsmState === "UNLOCKING";
@@ -217,7 +221,8 @@ function SidePanel({
           <span className="font-hind font-bold text-[13px] text-[#3A9F86] tracking-[0.1em] uppercase leading-tight">
             ① Mulai (Gesture Angka {START_GESTURE})
           </span>
-          <div className="w-[90px] h-[90px]">
+          {/* Ukuran disamain persis sama kartu preset di grid bawah: (184 - gap 8) / 2 = 88px */}
+          <div className="w-[88px] h-[88px]">
             <MiniGestureCard n={START_GESTURE} isStart startTriggered={startTriggered} />
           </div>
         </div>
@@ -234,7 +239,7 @@ function SidePanel({
           </span>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 max-w-[200px] mx-auto w-full">
+        <div className="grid grid-cols-2 gap-2 max-w-[184px] mx-auto w-full">
           {PRESET_GESTURES.map(n => (
             <div key={n}>
               <MiniGestureCard n={n} isActive={activePreset === n} isUsed={usedPresets.includes(n)} />
@@ -242,6 +247,24 @@ function SidePanel({
           ))}
         </div>
       </div>
+
+      {/* TOMBOL LANJUT — akhiri sesi foto lebih awal, lanjut ke halaman
+          berikutnya pakai foto-foto yang udah kejepret */}
+      <button
+        onClick={onLanjut}
+        disabled={lanjutDisabled}
+        className={`shrink-0 self-center px-14 h-[48px] rounded-full border-[2px] flex items-center justify-center gap-2.5 shadow-md transition-all ${lanjutDisabled
+          ? "bg-gray-400 border-gray-300 opacity-60 grayscale cursor-not-allowed"
+          : "bg-[#3A9F86] border-[#245F55] hover:scale-[1.02] active:scale-95 cursor-pointer"
+          }`}
+      >
+        <span className="font-inter font-extrabold italic text-[19px] text-white tracking-[-0.04em]">
+          Lanjut
+        </span>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 12h14M12 5l7 7-7 7" />
+        </svg>
+      </button>
     </div>
   );
 }
@@ -702,21 +725,29 @@ function SesiFotoContent() {
     return () => clearInterval(timer);
   }, [timeLeft, shotPhase]);
 
+  // 🔚 Akhiri sesi foto — dipakai timer habis DAN tombol Lanjut.
+  //    Robot dimatiin, lanjut ke terima-kasih → frame pakai foto yang udah ada.
+  const endSessionNow = () => {
+    if (hasEndedRef.current) return;
+    hasEndedRef.current = true;
+
+    fetch(`${BACKEND_URL}/api/robot/disable`, { method: "POST" })
+      .then(() => { if (DEBUG_STATE) console.log("🤖 [ROBOT] disabled — sesi diakhiri"); })
+      .catch((err) => console.warn("🤖 [ROBOT] disable gagal (lanjut aja):", err));
+
+    try {
+      const bc = new BroadcastChannel("glambot_session");
+      bc.postMessage({ type: "session_ended" });
+      bc.close();
+    } catch (e) { }
+    router.push(`/terima-kasih?txn=${txn}`);
+  };
+
   useEffect(() => {
     if (session && timeLeft <= 0 && !hasEndedRef.current) {
-      hasEndedRef.current = true;
-
-      fetch(`${BACKEND_URL}/api/robot/disable`, { method: "POST" })
-        .then(() => { if (DEBUG_STATE) console.log("🤖 [ROBOT] disabled — timer habis"); })
-        .catch((err) => console.warn("🤖 [ROBOT] disable gagal (lanjut aja):", err));
-
-      try {
-        const bc = new BroadcastChannel("glambot_session");
-        bc.postMessage({ type: "session_ended" });
-        bc.close();
-      } catch (e) { }
-      router.push(`/terima-kasih?txn=${txn}`);
+      endSessionNow();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLeft, session, txn, router]);
 
   useEffect(() => {
@@ -1256,6 +1287,8 @@ function SesiFotoContent() {
             activePreset={activePreset}
             usedPresets={usedPresets}
             startTriggered={startTriggered}
+            onLanjut={endSessionNow}
+            lanjutDisabled={!session || fotoDiambil === 0 || isCapturing || shotPhase !== "idle"}
           />
         </div>
       </div>
